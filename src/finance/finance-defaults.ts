@@ -36,10 +36,20 @@ export const FINANCE_DEFAULTS: Record<Language, Defaults> = {
   },
 };
 
-export function defaultCategories(lang: Language): { name: string; type: TransactionType }[] {
+// постоянные ключи стандартных категорий — в том же порядке, что и названия выше.
+// Ключ остаётся при переименовании, по нему приложения находят «свою» категорию
+// (например, список покупок из меню — «groceries»)
+export const DEFAULT_CATEGORY_KEYS = {
+  expense: ['cafe', 'coffee', 'groceries', 'supplies', 'transport', 'home', 'health', 'entertainment'],
+  income: ['salary', 'side_jobs', 'gifts'],
+} as const;
+
+export function defaultCategories(
+  lang: Language,
+): { name: string; type: TransactionType; key: string }[] {
   const d = FINANCE_DEFAULTS[lang];
   return [
-    ...d.expense.map((name) => ({ name, type: 'expense' as const })),
-    ...d.income.map((name) => ({ name, type: 'income' as const })),
+    ...d.expense.map((name, i) => ({ name, type: 'expense' as const, key: DEFAULT_CATEGORY_KEYS.expense[i] })),
+    ...d.income.map((name, i) => ({ name, type: 'income' as const, key: DEFAULT_CATEGORY_KEYS.income[i] })),
   ];
 }

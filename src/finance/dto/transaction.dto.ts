@@ -46,6 +46,11 @@ export class CreateTransactionDto {
 
   @Matches(DATE_RE, { message: 'date must be YYYY-MM-DD' })
   date: string;
+
+  // финансовый итог задачи из Планов: вместе с записью задача отмечается выполненной
+  @IsOptional()
+  @IsInt()
+  taskId?: number;
 }
 
 export class UpdateTransactionDto {

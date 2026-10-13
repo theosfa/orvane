@@ -28,6 +28,10 @@ export class FinanceCategory {
   @Column({ type: 'varchar', length: 10 })
   type: TransactionType;
 
+  // ключ стандартной категории ('groceries', 'salary'…); у своих категорий — null
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  key: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

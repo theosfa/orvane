@@ -298,4 +298,47 @@ describe('Finance (e2e)', () => {
       expect(cafeOnly.body.expense).toBe(10.3);
     });
   });
+
+  describe('category keys', () => {
+    it('gives default categories a stable key that survives renaming', async () => {
+      const cats = (await http().get('/finance/categories?lang=pl').set(auth).expect(200)).body;
+      const groceries = cats.find((c: { key: string }) => c.key === 'groceries');
+      expect(groceries).toMatchObject({ name: 'Spożywcze', type: 'expense' });
+      expect(cats.find((c: { key: string }) => c.key === 'salary').type).toBe('income');
+
+      await http().patch(`/finance/categories/${groceries.id}`).set(auth).send({ name: 'Jedzenie' }).expect(200);
+      const again = (await http().get('/finance/categories').set(auth)).body;
+      expect(again.find((c: { id: number }) => c.id === groceries.id)).toMatchObject({ name: 'Jedzenie', key: 'groceries' });
+
+      const own = await http().post('/finance/categories').set(auth).send({ name: 'Books', type: 'expense' }).expect(201);
+      expect(own.body.key).toBeNull();
+    });
+  });
+
+  describe('settling a Plans task', () => {
+    const task = async (a: Record<string, string>, title = 'Shopping list') =>
+      (await http().post('/tasks').set(a).send({ title, date: '2026-10-15', source: 'food' }).expect(201)).body;
+
+    it('records the expense and marks the task done together', async () => {
+      const t = await task(auth);
+      const [wallet] = (await http().get('/finance/wallets').set(auth)).body;
+      const groceries = (await http().get('/finance/categories').set(auth)).body.find((c: { key: string }) => c.key === 'groceries');
+
+      const res = await addTx({ type: 'expense', walletId: wallet.id, categoryId: groceries.id, amount: 64.2, note: t.title, date: '2026-10-16', taskId: t.id }).expect(201);
+      expect(res.body).toMatchObject({ amount: 64.2, note: 'Shopping list', categoryName: 'Groceries' });
+
+      const tasks = (await http().get('/tasks?from=2026-10-12').set(auth)).body;
+      expect(tasks[0]).toMatchObject({ id: t.id, done: true });
+    });
+
+    it("saves nothing when the task isn't yours", async () => {
+      const other = await registerUser(app);
+      const foreign = await task(other.auth);
+      const [wallet] = (await http().get('/finance/wallets').set(auth)).body;
+
+      await addTx({ type: 'expense', walletId: wallet.id, amount: 10, date: '2026-10-16', taskId: foreign.id }).expect(404);
+      expect((await http().get('/finance/transactions').set(auth)).body).toEqual([]);
+      expect((await http().get('/tasks?from=2026-10-12').set(other.auth)).body[0].done).toBe(false);
+    });
+  });
 });

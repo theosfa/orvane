@@ -12,6 +12,7 @@ import type { Language } from '../common/languages';
 import { Wallet } from './wallet.entity';
 import { FinanceCategory } from './finance-category.entity';
 import { FinanceTransaction } from './finance-transaction.entity';
+import { Task } from '../tasks/task.entity';
 import { FINANCE_DEFAULTS, defaultCategories } from './finance-defaults';
 import type { TransactionType } from './finance-types';
 import { CreateWalletDto, UpdateWalletDto } from './dto/wallet.dto';
@@ -149,7 +150,7 @@ export class FinanceService {
   // ---- категории ----
 
   private toCategory(c: FinanceCategory) {
-    return { id: c.id, name: c.name, type: c.type };
+    return { id: c.id, name: c.name, type: c.type, key: c.key };
   }
 
   async listCategories(
@@ -290,21 +291,33 @@ export class FinanceService {
     return tx;
   }
 
+  // с taskId запись и отметка «выполнено» у задачи сохраняются вместе или не сохраняются вовсе
   async createTransaction(userId: number, dto: CreateTransactionDto) {
     const categoryId = dto.categoryId ?? null;
     await this.checkRefs(userId, dto.type, dto.walletId, categoryId);
-    const tx = await this.txRepo.save(
-      this.txRepo.create({
-        userId,
-        type: dto.type,
-        walletId: dto.walletId,
-        categoryId,
-        amount: String(dto.amount),
-        note: dto.note ?? '',
-        date: dto.date,
-      }),
-    );
-    return this.toTransaction(await this.findTransaction(userId, tx.id));
+    const id = await this.dataSource.transaction(async (manager) => {
+      if (dto.taskId !== undefined) {
+        const result = await manager.update(
+          Task,
+          { id: dto.taskId, userId },
+          { done: true },
+        );
+        if (!result.affected) throw new NotFoundException('Task not found');
+      }
+      const tx = await manager.save(
+        manager.create(FinanceTransaction, {
+          userId,
+          type: dto.type,
+          walletId: dto.walletId,
+          categoryId,
+          amount: String(dto.amount),
+          note: dto.note ?? '',
+          date: dto.date,
+        }),
+      );
+      return tx.id;
+    });
+    return this.toTransaction(await this.findTransaction(userId, id));
   }
 
   async updateTransaction(
