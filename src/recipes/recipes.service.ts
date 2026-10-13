@@ -51,6 +51,7 @@ export class RecipesService {
       originalLanguage: lang,
       authorId: userId,
       isPublic: dto.isPublic ?? true,
+      servings: dto.servings ?? 1,
     });
     await this.recipeRepo.save(recipe);
 
@@ -177,6 +178,7 @@ export class RecipesService {
       liked,
       isPublic: r.isPublic,
       isMine: r.authorId === userId,
+      servings: r.servings,
       calories: Math.round(computeRecipeTotals(r).calories),
     };
   }
@@ -242,6 +244,8 @@ export class RecipesService {
       autoTranslated:
         name.autoTranslated ||
         [...stepTexts.values()].some((s) => s.autoTranslated),
+      // количества ингредиентов и total — на servings человек
+      servings: recipe.servings,
       ingredients,
       steps,
       liked,

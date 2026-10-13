@@ -34,6 +34,10 @@ export class Recipe {
   @Column({ type: 'int', nullable: true })
   authorId: number | null;
 
+  // на сколько человек рассчитаны количества ингредиентов
+  @Column({ type: 'smallint', default: 1 })
+  servings: number;
+
   // приватный рецепт видит только автор
   @Column({ default: true })
   isPublic: boolean;

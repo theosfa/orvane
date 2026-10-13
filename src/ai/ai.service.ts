@@ -6,11 +6,13 @@ import {
 } from '@nestjs/common';
 import { IngredientsService } from '../ingredients/ingredients.service';
 import { toLanguage, type Language } from '../common/languages';
+import { clampServings } from '../recipes/servings';
 
 // ingredientId = null — модель предложила продукт, которого нет в базе;
 // фронт покажет его, чтобы юзер выбрал замену сам (раньше такие молча выкидывались)
 type GeneratedRecipe = {
   name: string;
+  servings: number;
   ingredients: { ingredientId: number | null; name: string; amount: number }[];
   steps: { stepNum: number; stepText: string }[];
 };
@@ -45,7 +47,8 @@ export class AiService {
     const systemPrompt = [
       'You are an experienced chef writing recipes for a meal-planning app. Home cooks must be able to follow them without guessing.',
       'Respond with ONLY strict JSON, no markdown, matching exactly this shape:',
-      '{"name": string, "ingredients": [{"name": string, "searchName": string, "amount": number}], "steps": [string]}',
+      '{"name": string, "servings": number, "ingredients": [{"name": string, "searchName": string, "amount": number}], "steps": [string]}',
+      '"servings" is how many people the amounts feed (an integer, usually 2-4 unless the request says otherwise).',
       '',
       'Ingredients:',
       '- List EVERY ingredient used, including oil/butter for frying, salt, pepper, spices, herbs, water or stock, garnish.',
@@ -98,6 +101,7 @@ export class AiService {
 
     let parsed: {
       name?: string;
+      servings?: number;
       ingredients?: ModelIngredient[];
       steps?: string[];
     };
@@ -127,6 +131,7 @@ export class AiService {
 
     return {
       name: parsed.name?.trim() || 'AI-suggested recipe',
+      servings: clampServings(parsed.servings),
       ingredients,
       steps: (parsed.steps ?? [])
         .filter((stepText) => typeof stepText === 'string' && stepText.trim())

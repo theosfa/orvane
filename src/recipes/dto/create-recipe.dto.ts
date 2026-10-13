@@ -7,8 +7,10 @@ import {
   Min,
   IsBoolean,
   IsOptional,
+  Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { MAX_SERVINGS } from '../servings';
 
 class RecipeIngredientDto {
   @IsInt()
@@ -29,6 +31,13 @@ class RecipeStepDto {
 export class CreateRecipeDto {
   @IsString()
   name: string;
+
+  // на сколько человек рассчитан рецепт (по умолчанию 1)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(MAX_SERVINGS)
+  servings?: number;
 
   // по умолчанию рецепт публичный
   @IsOptional()
