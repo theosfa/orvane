@@ -3,7 +3,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  Param,
+  ParseIntPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -11,7 +15,7 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { TasksService } from './tasks.service';
-import { CreateTaskDto } from './dto/task.dto';
+import { CreateTaskDto, UpdateTaskDto } from './dto/task.dto';
 import { addDays, isISODate } from '../common/dates';
 
 // задачи Планов; сюда же присылают задачи другие приложения (например, список покупок из меню)
@@ -32,5 +36,20 @@ export class TasksController {
   @Post()
   create(@Req() req: any, @Body() dto: CreateTaskDto) {
     return this.tasks.create(req.user.userId, dto);
+  }
+
+  // отметить сделанной, переименовать, перенести на другой день
+  @Patch(':id')
+  update(
+    @Req() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateTaskDto,
+  ) {
+    return this.tasks.update(req.user.userId, id, dto);
+  }
+
+  @Delete(':id')
+  remove(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
+    return this.tasks.remove(req.user.userId, id);
   }
 }

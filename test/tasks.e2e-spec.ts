@@ -43,4 +43,38 @@ describe('Tasks (e2e)', () => {
     await http().post('/tasks').set(auth).send({ title: 'x', date: '2026-10-13', source: 'spam' }).expect(400);
     await http().get('/tasks').set(auth).expect(400);
   });
+
+  it('ticks, renames, moves and deletes a task', async () => {
+    const { body: task } = await http().post('/tasks').set(auth).send({ title: 'Buy milk', date: '2026-10-13' }).expect(201);
+
+    const done = await http().patch(`/tasks/${task.id}`).set(auth).send({ done: true }).expect(200);
+    expect(done.body).toMatchObject({ done: true, title: 'Buy milk' });
+
+    const moved = await http().patch(`/tasks/${task.id}`).set(auth).send({ title: 'Buy oat milk', date: '2026-10-20', done: false }).expect(200);
+    expect(moved.body).toMatchObject({ title: 'Buy oat milk', date: '2026-10-20', done: false });
+    expect((await http().get('/tasks?from=2026-10-12').set(auth)).body).toEqual([]);
+    expect((await http().get('/tasks?from=2026-10-19').set(auth)).body).toHaveLength(1);
+
+    await http().patch(`/tasks/${task.id}`).set(auth).send({ date: '2026-02-30' }).expect(400);
+    await http().patch(`/tasks/${task.id}`).set(auth).send({ done: 'yes' }).expect(400);
+
+    await http().delete(`/tasks/${task.id}`).set(auth).expect(200);
+    await http().delete(`/tasks/${task.id}`).set(auth).expect(404);
+  });
+
+  it("cannot see or change another user's tasks", async () => {
+    const { body: task } = await http().post('/tasks').set(auth).send({ title: 'Mine', date: '2026-10-13' }).expect(201);
+    const other = await registerUser(app);
+    expect((await http().get('/tasks?from=2026-10-12').set(other.auth)).body).toEqual([]);
+    await http().patch(`/tasks/${task.id}`).set(other.auth).send({ done: true }).expect(404);
+    await http().delete(`/tasks/${task.id}`).set(other.auth).expect(404);
+  });
+
+  it('lists a week ordered by day, then creation', async () => {
+    for (const [title, date] of [['b', '2026-10-14'], ['a', '2026-10-12'], ['c', '2026-10-14'], ['out', '2026-10-19']]) {
+      await http().post('/tasks').set(auth).send({ title, date }).expect(201);
+    }
+    const res = await http().get('/tasks?from=2026-10-12&to=2026-10-18').set(auth).expect(200);
+    expect(res.body.map((t: { title: string }) => t.title)).toEqual(['a', 'b', 'c']);
+  });
 });

@@ -1,5 +1,6 @@
 // tasks/dto/task.dto.ts
 import {
+  IsBoolean,
   IsIn,
   IsOptional,
   IsString,
@@ -34,4 +35,27 @@ export class CreateTaskDto {
   @IsOptional()
   @IsIn(TASK_SOURCES)
   source?: TaskSource;
+}
+
+export class UpdateTaskDto {
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10000)
+  notes?: string;
+
+  // перенести на другой день
+  @IsOptional()
+  @Matches(DATE_RE, { message: 'date must be YYYY-MM-DD' })
+  date?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  done?: boolean;
 }
