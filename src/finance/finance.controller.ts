@@ -22,107 +22,146 @@ import { CreateWalletDto, UpdateWalletDto } from './dto/wallet.dto';
 import { CreateCategoryDto, RenameCategoryDto } from './dto/category.dto';
 import {
   CreateTransactionDto,
+  CreateTransferDto,
   TransactionFiltersDto,
   UpdateTransactionDto,
 } from './dto/transaction.dto';
+import { FamilyService } from '../family/family.service';
+import { toScopeName } from '../family/scope';
 
+// ?scope=family — семейный бюджет: смотреть может любой участник, менять — только админ
 @Controller('finance')
 @UseGuards(JwtAuthGuard)
 export class FinanceController {
-  constructor(private finance: FinanceService) {}
+  constructor(
+    private finance: FinanceService,
+    private family: FamilyService,
+  ) {}
+
+  private view(req: any, scope?: string) {
+    return this.family.scope(req.user.userId, toScopeName(scope), 'view');
+  }
+
+  private edit(req: any, scope?: string) {
+    return this.family.scope(req.user.userId, toScopeName(scope), 'edit');
+  }
 
   @Get('wallets')
-  listWallets(@Req() req: any, @Lang() lang: Language) {
-    return this.finance.listWallets(req.user.userId, lang);
+  async listWallets(@Req() req: any, @Lang() lang: Language, @Query('scope') scope?: string) {
+    return this.finance.listWallets(await this.view(req, scope), lang);
   }
 
   @Post('wallets')
-  createWallet(
+  async createWallet(
     @Req() req: any,
     @Body() dto: CreateWalletDto,
     @Lang() lang: Language,
+    @Query('scope') scope?: string,
   ) {
-    return this.finance.createWallet(req.user.userId, dto, lang);
+    return this.finance.createWallet(await this.edit(req, scope), dto, lang);
   }
 
   @Patch('wallets/:id')
-  updateWallet(
+  async updateWallet(
     @Req() req: any,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateWalletDto,
+    @Query('scope') scope?: string,
   ) {
-    return this.finance.updateWallet(req.user.userId, id, dto);
+    return this.finance.updateWallet(await this.edit(req, scope), id, dto);
   }
 
   @Delete('wallets/:id')
-  deleteWallet(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
-    return this.finance.deleteWallet(req.user.userId, id);
+  async deleteWallet(@Req() req: any, @Param('id', ParseIntPipe) id: number, @Query('scope') scope?: string) {
+    return this.finance.deleteWallet(await this.edit(req, scope), id);
   }
 
   // GET /finance/categories?type=expense
   @Get('categories')
-  listCategories(
+  async listCategories(
     @Req() req: any,
     @Lang() lang: Language,
     @Query('type') type?: string,
+    @Query('scope') scope?: string,
   ) {
     const t = TRANSACTION_TYPES.includes(type as TransactionType)
       ? (type as TransactionType)
       : undefined;
-    return this.finance.listCategories(req.user.userId, lang, t);
+    return this.finance.listCategories(await this.view(req, scope), lang, t);
   }
 
   @Post('categories')
-  createCategory(
+  async createCategory(
     @Req() req: any,
     @Body() dto: CreateCategoryDto,
     @Lang() lang: Language,
+    @Query('scope') scope?: string,
   ) {
-    return this.finance.createCategory(req.user.userId, dto, lang);
+    return this.finance.createCategory(await this.edit(req, scope), dto, lang);
   }
 
   @Patch('categories/:id')
-  renameCategory(
+  async renameCategory(
     @Req() req: any,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RenameCategoryDto,
+    @Query('scope') scope?: string,
   ) {
-    return this.finance.renameCategory(req.user.userId, id, dto);
+    return this.finance.renameCategory(await this.edit(req, scope), id, dto);
   }
 
   @Delete('categories/:id')
-  deleteCategory(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
-    return this.finance.deleteCategory(req.user.userId, id);
+  async deleteCategory(@Req() req: any, @Param('id', ParseIntPipe) id: number, @Query('scope') scope?: string) {
+    return this.finance.deleteCategory(await this.edit(req, scope), id);
   }
 
   // GET /finance/transactions?type=expense&categoryId=3&walletId=1&from=2026-09-01&to=2026-09-30
   @Get('transactions')
-  listTransactions(@Req() req: any, @Query() filters: TransactionFiltersDto) {
-    return this.finance.listTransactions(req.user.userId, filters);
+  async listTransactions(
+    @Req() req: any,
+    @Query() filters: TransactionFiltersDto,
+    @Query('scope') scope?: string,
+  ) {
+    return this.finance.listTransactions(await this.view(req, scope), filters);
   }
 
   @Post('transactions')
-  createTransaction(@Req() req: any, @Body() dto: CreateTransactionDto) {
-    return this.finance.createTransaction(req.user.userId, dto);
+  async createTransaction(
+    @Req() req: any,
+    @Body() dto: CreateTransactionDto,
+    @Query('scope') scope?: string,
+  ) {
+    return this.finance.createTransaction(await this.edit(req, scope), dto);
   }
 
   @Patch('transactions/:id')
-  updateTransaction(
+  async updateTransaction(
     @Req() req: any,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateTransactionDto,
+    @Query('scope') scope?: string,
   ) {
-    return this.finance.updateTransaction(req.user.userId, id, dto);
+    return this.finance.updateTransaction(await this.edit(req, scope), id, dto);
   }
 
   @Delete('transactions/:id')
-  deleteTransaction(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
-    return this.finance.deleteTransaction(req.user.userId, id);
+  async deleteTransaction(@Req() req: any, @Param('id', ParseIntPipe) id: number, @Query('scope') scope?: string) {
+    return this.finance.deleteTransaction(await this.edit(req, scope), id);
+  }
+
+  // перевод между кошельками разных областей (личный ↔ семейный); права — на обе стороны
+  @Post('transfers')
+  createTransfer(@Req() req: any, @Body() dto: CreateTransferDto) {
+    return this.finance.createTransfer(req.user.userId, dto);
   }
 
   // GET /finance/summary?from=2026-09-01&to=2026-09-30 — те же фильтры, что у списка
   @Get('summary')
-  summary(@Req() req: any, @Query() filters: TransactionFiltersDto) {
-    return this.finance.summary(req.user.userId, filters);
+  async summary(
+    @Req() req: any,
+    @Query() filters: TransactionFiltersDto,
+    @Query('scope') scope?: string,
+  ) {
+    return this.finance.summary(await this.view(req, scope), filters);
   }
 }

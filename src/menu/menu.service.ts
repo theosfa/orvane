@@ -20,6 +20,7 @@ import {
 } from '../recipes/recipe-totals';
 import { scaleAmount } from '../recipes/servings';
 import { addDays, isISODate } from '../common/dates';
+import { Scope, ownedBy, ownerFields } from '../family/scope';
 
 const MEAL_ORDER = ['breakfast', 'lunch', 'dinner', 'snack'];
 
@@ -47,12 +48,14 @@ export class MenuService {
 
   // меню на неделю с понедельника weekStart: 7 дней с датами, приёмы пищи и КБЖУ.
   // Калории — на одного человека (сколько съест каждый), servings — на скольких готовим.
-  async getWeek(userId: number, weekStart: string, lang: string) {
+  // scope — личное меню или общее меню семьи
+  async getWeek(scope: Scope, weekStart: string, lang: string) {
     const weekEnd = addDays(weekStart, 6);
     const entries = await this.menuRepo.find({
-      where: { userId, date: Between(weekStart, weekEnd) },
+      where: { ...ownedBy(scope), date: Between(weekStart, weekEnd) },
       relations: {
         recipe: { ingredients: { ingredient: true }, translations: true },
+        user: true,
       },
       order: { date: 'ASC', id: 'ASC' },
     });
@@ -76,6 +79,8 @@ export class MenuService {
           recipeId: e.recipe.id,
           recipeName: names.get(e.recipe.id)!.text,
           servings: e.servings,
+          // кто добавил — видно в семейном меню
+          addedBy: e.user?.email ?? null,
           ...roundTotals(perServing(e.recipe)),
         }));
       const total = roundTotals(
@@ -100,9 +105,14 @@ export class MenuService {
     return { weekStart, days, weekTotal };
   }
 
-  // в меню попадают только лайкнутые рецепты, которые юзер по-прежнему может видеть
-  private async assertLiked(userId: number, recipeIds: number[]) {
-    const unique = [...new Set(recipeIds)];
+  // в меню попадают только рецепты, которые лайкнул сам добавляющий (и по-прежнему может видеть);
+  // alreadyThere — уже стоящие в этом дне блюда (в семье их мог добавить другой админ)
+  private async assertLiked(
+    userId: number,
+    recipeIds: number[],
+    alreadyThere: number[] = [],
+  ) {
+    const unique = [...new Set(recipeIds)].filter((id) => !alreadyThere.includes(id));
     if (!unique.length) return;
     const likes = await this.likeRepo.find({
       where: { userId, recipeId: In(unique) },
@@ -125,12 +135,12 @@ export class MenuService {
     if (!isISODate(date)) throw new BadRequestException('Invalid date');
   }
 
-  async addEntry(userId: number, dto: AddMenuEntryDto) {
+  async addEntry(scope: Scope, dto: AddMenuEntryDto) {
     this.assertDate(dto.date);
-    await this.assertLiked(userId, [dto.recipeId]);
+    await this.assertLiked(scope.userId, [dto.recipeId]);
     const entry = await this.menuRepo.save(
       this.menuRepo.create({
-        userId,
+        ...ownerFields(scope),
         date: dto.date,
         mealType: dto.mealType,
         recipeId: dto.recipeId,
@@ -141,19 +151,24 @@ export class MenuService {
   }
 
   // день целиком: всё, что было на эту дату, заменяется переданным списком (атомарно)
-  async setDay(userId: number, date: string, meals: MenuMealDto[]) {
+  async setDay(scope: Scope, date: string, meals: MenuMealDto[]) {
     this.assertDate(date);
+    const current = await this.menuRepo.find({ where: { ...ownedBy(scope), date } });
     await this.assertLiked(
-      userId,
+      scope.userId,
       meals.map((m) => m.recipeId),
+      current.map((e) => e.recipeId),
     );
+    // блюдо, которое было в дне и осталось, сохраняет своего автора
+    const authorOf = new Map(current.map((e) => [e.recipeId, e.userId]));
     await this.dataSource.transaction(async (manager) => {
-      await manager.delete(MenuEntry, { userId, date });
+      await manager.delete(MenuEntry, { ...ownedBy(scope), date });
       if (meals.length) {
         await manager.save(
           meals.map((m) =>
             manager.create(MenuEntry, {
-              userId,
+              ...ownerFields(scope),
+              userId: authorOf.get(m.recipeId) ?? scope.userId,
               date,
               mealType: m.mealType,
               recipeId: m.recipeId,
@@ -166,20 +181,21 @@ export class MenuService {
     return { saved: meals.length };
   }
 
-  async removeEntry(userId: number, entryId: number) {
-    const result = await this.menuRepo.delete({ id: entryId, userId });
-    if (!result.affected) throw new NotFoundException('Menu entry not found');
+  async removeEntry(scope: Scope, entryId: number) {
+    const entry = await this.menuRepo.findOne({ where: { id: entryId, ...ownedBy(scope) } });
+    if (!entry) throw new NotFoundException('Menu entry not found');
+    await this.menuRepo.delete({ id: entryId });
     return { removed: true };
   }
 
   // список покупок за выбранные дни: ингредиенты всех рецептов, пересчитанные
   // на число человек в каждом приёме пищи, одинаковые продукты сложены
-  async getShoppingList(userId: number, dates: string[], lang: string) {
+  async getShoppingList(scope: Scope, dates: string[], lang: string) {
     if (!dates.length) throw new BadRequestException('Choose at least one day');
     dates.forEach((d) => this.assertDate(d));
 
     const entries = await this.menuRepo.find({
-      where: { userId, date: In([...new Set(dates)]) },
+      where: { ...ownedBy(scope), date: In([...new Set(dates)]) },
       relations: {
         recipe: { ingredients: { ingredient: { translations: true } } },
       },

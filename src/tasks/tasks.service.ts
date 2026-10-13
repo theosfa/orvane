@@ -9,7 +9,9 @@ import { Between, Repository } from 'typeorm';
 import { Task } from './task.entity';
 import { CreateTaskDto, UpdateTaskDto } from './dto/task.dto';
 import { isISODate } from '../common/dates';
+import { Scope, ownedBy, ownerFields } from '../family/scope';
 
+// scope — личные задачи юзера или общие задачи его семьи
 @Injectable()
 export class TasksService {
   constructor(@InjectRepository(Task) private taskRepo: Repository<Task>) {}
@@ -26,19 +28,19 @@ export class TasksService {
   }
 
   // задачи за период включительно, по дням, внутри дня — в порядке создания
-  async list(userId: number, from: string, to: string) {
+  async list(scope: Scope, from: string, to: string) {
     const tasks = await this.taskRepo.find({
-      where: { userId, date: Between(from, to) },
+      where: { ...ownedBy(scope), date: Between(from, to) },
       order: { date: 'ASC', id: 'ASC' },
     });
     return tasks.map((t) => this.toTask(t));
   }
 
-  async create(userId: number, dto: CreateTaskDto) {
+  async create(scope: Scope, dto: CreateTaskDto) {
     if (!isISODate(dto.date)) throw new BadRequestException('Invalid date');
     const task = await this.taskRepo.save(
       this.taskRepo.create({
-        userId,
+        ...ownerFields(scope),
         title: dto.title,
         notes: dto.notes ?? '',
         date: dto.date,
@@ -48,11 +50,11 @@ export class TasksService {
     return this.toTask(task);
   }
 
-  async update(userId: number, id: number, dto: UpdateTaskDto) {
+  async update(scope: Scope, id: number, dto: UpdateTaskDto) {
     if (dto.date !== undefined && !isISODate(dto.date)) {
       throw new BadRequestException('Invalid date');
     }
-    const task = await this.taskRepo.findOne({ where: { id, userId } });
+    const task = await this.taskRepo.findOne({ where: { id, ...ownedBy(scope) } });
     if (!task) throw new NotFoundException('Task not found');
     Object.assign(task, {
       ...(dto.title !== undefined && { title: dto.title }),
@@ -64,9 +66,10 @@ export class TasksService {
     return this.toTask(task);
   }
 
-  async remove(userId: number, id: number) {
-    const result = await this.taskRepo.delete({ id, userId });
-    if (!result.affected) throw new NotFoundException('Task not found');
+  async remove(scope: Scope, id: number) {
+    const task = await this.taskRepo.findOne({ where: { id, ...ownedBy(scope) } });
+    if (!task) throw new NotFoundException('Task not found');
+    await this.taskRepo.delete({ id });
     return { removed: true };
   }
 }

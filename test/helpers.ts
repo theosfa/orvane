@@ -20,9 +20,10 @@ export async function createApp(): Promise<INestApplication> {
 
 let counter = 0;
 
+export const uniqueEmail = () => `user${Date.now()}_${counter++}@test.dev`;
+
 // новый юзер на каждый тест — тесты не мешают друг другу
-export async function registerUser(app: INestApplication) {
-  const email = `user${Date.now()}_${counter++}@test.dev`;
+export async function registerUser(app: INestApplication, email = uniqueEmail()) {
   const res = await request(app.getHttpServer())
     .post('/auth/register')
     .send({ email, password: 'password123' })

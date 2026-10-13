@@ -8,6 +8,7 @@ import {
   Index,
 } from 'typeorm';
 import { User } from '../users/users.entity';
+import { Family } from '../family/family.entity';
 import { Recipe } from '../recipes/recipe.entity';
 
 export const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
@@ -27,6 +28,13 @@ export class MenuEntry {
 
   @Column()
   userId: number;
+
+  // задан — запись семейная (userId = кто создал), null — личная
+  @ManyToOne(() => Family, { onDelete: 'CASCADE', nullable: true })
+  family: Family | null;
+
+  @Column({ type: 'int', nullable: true })
+  familyId: number | null;
 
   // конкретный день, 'YYYY-MM-DD' — можно планировать будущие недели и смотреть прошлые
   @Column({ type: 'date' })

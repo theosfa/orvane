@@ -7,6 +7,7 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 import { User } from '../users/users.entity';
+import { Family } from '../family/family.entity';
 
 // кошелёк (карта, наличные, счёт); баланс = initialBalance + доходы − расходы, может уйти в минус
 @Entity('wallets')
@@ -19,6 +20,13 @@ export class Wallet {
 
   @Column()
   userId: number;
+
+  // задан — запись семейная (userId = кто создал), null — личная
+  @ManyToOne(() => Family, { onDelete: 'CASCADE', nullable: true })
+  family: Family | null;
+
+  @Column({ type: 'int', nullable: true })
+  familyId: number | null;
 
   @Column({ length: 60 })
   name: string;

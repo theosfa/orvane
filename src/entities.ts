@@ -14,6 +14,7 @@ import { Wallet } from './finance/wallet.entity';
 import { FinanceCategory } from './finance/finance-category.entity';
 import { FinanceTransaction } from './finance/finance-transaction.entity';
 import { Task } from './tasks/task.entity';
+import { Family, FamilyInvite, FamilyMember } from './family/family.entity';
 
 export const ENTITIES = [
   User,
@@ -31,4 +32,7 @@ export const ENTITIES = [
   FinanceCategory,
   FinanceTransaction,
   Task,
+  Family,
+  FamilyMember,
+  FamilyInvite,
 ];

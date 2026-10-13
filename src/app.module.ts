@@ -12,6 +12,7 @@ import { MenuModule } from './menu/menu.module';
 import { AiModule } from './ai/ai.module';
 import { FinanceModule } from './finance/finance.module';
 import { TasksModule } from './tasks/tasks.module';
+import { FamilyModule } from './family/family.module';
 import { ENTITIES } from './entities';
 
 dotenv.config();
@@ -41,6 +42,7 @@ dotenv.config();
     AiModule,
     FinanceModule,
     TasksModule,
+    FamilyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

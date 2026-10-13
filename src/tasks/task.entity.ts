@@ -8,6 +8,7 @@ import {
   Index,
 } from 'typeorm';
 import { User } from '../users/users.entity';
+import { Family } from '../family/family.entity';
 
 // откуда пришла задача: создана в Планах вручную или прислана другим приложением
 export const TASK_SOURCES = ['manual', 'food', 'finance'] as const;
@@ -24,6 +25,13 @@ export class Task {
 
   @Column()
   userId: number;
+
+  // задан — запись семейная (userId = кто создал), null — личная
+  @ManyToOne(() => Family, { onDelete: 'CASCADE', nullable: true })
+  family: Family | null;
+
+  @Column({ type: 'int', nullable: true })
+  familyId: number | null;
 
   @Column({ length: 200 })
   title: string;

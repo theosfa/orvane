@@ -7,6 +7,7 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 import { User } from '../users/users.entity';
+import { Family } from '../family/family.entity';
 import type { TransactionType } from './finance-types';
 
 // категория расходов (кафе, кофе…) или доходов (зарплата…); у каждого юзера свои —
@@ -21,6 +22,13 @@ export class FinanceCategory {
 
   @Column()
   userId: number;
+
+  // задан — запись семейная (userId = кто создал), null — личная
+  @ManyToOne(() => Family, { onDelete: 'CASCADE', nullable: true })
+  family: Family | null;
+
+  @Column({ type: 'int', nullable: true })
+  familyId: number | null;
 
   @Column({ length: 60 })
   name: string;

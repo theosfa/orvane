@@ -110,3 +110,26 @@ export class TransactionFiltersDto {
   @Matches(DATE_RE, { message: 'to must be YYYY-MM-DD' })
   to?: string;
 }
+
+// перевод между своими кошельками, например в семейный бюджет
+export class CreateTransferDto {
+  @IsInt()
+  fromWalletId: number;
+
+  @IsInt()
+  toWalletId: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(1_000_000_000)
+  amount: number;
+
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(200)
+  note?: string;
+
+  @Matches(DATE_RE, { message: 'date must be YYYY-MM-DD' })
+  date: string;
+}

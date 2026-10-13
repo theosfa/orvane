@@ -7,6 +7,7 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 import { User } from '../users/users.entity';
+import { Family } from '../family/family.entity';
 import { Wallet } from './wallet.entity';
 import { FinanceCategory } from './finance-category.entity';
 import type { TransactionType } from './finance-types';
@@ -22,6 +23,13 @@ export class FinanceTransaction {
 
   @Column()
   userId: number;
+
+  // задан — запись семейная (userId = кто создал), null — личная
+  @ManyToOne(() => Family, { onDelete: 'CASCADE', nullable: true })
+  family: Family | null;
+
+  @Column({ type: 'int', nullable: true })
+  familyId: number | null;
 
   @ManyToOne(() => Wallet, { onDelete: 'CASCADE' })
   wallet: Wallet;
@@ -44,6 +52,10 @@ export class FinanceTransaction {
 
   @Column({ length: 200, default: '' })
   note: string;
+
+  // перевод между кошельками: две записи (расход + доход) с одним transferId; в итогах не считается
+  @Column({ type: 'uuid', nullable: true })
+  transferId: string | null;
 
   // день операции, 'YYYY-MM-DD'
   @Column({ type: 'date' })
