@@ -16,12 +16,14 @@ import { AuthDto, UpdateProfileDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 const REFRESH_COOKIE = 'lad_refresh';
-// кука уходит только на /auth/* — остальным эндпоинтам она не нужна
+// кука уходит только на /auth/* — остальным эндпоинтам она не нужна.
+// Фронт ходит в API через свой прокси /api (next.config.js), поэтому браузер
+// видит эти роуты как /api/auth/*; при прямых запросах в API — REFRESH_COOKIE_PATH=/auth
 const cookieOptions = {
   httpOnly: true,
   sameSite: 'lax' as const,
   secure: process.env.NODE_ENV === 'production',
-  path: '/auth',
+  path: process.env.REFRESH_COOKIE_PATH ?? '/api/auth',
 };
 
 @Controller('auth')

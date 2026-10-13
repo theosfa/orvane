@@ -20,7 +20,7 @@ export class Recipe {
   @Column()
   name: string;
 
-  // язык, на котором автор написал рецепт ('ru' | 'en' | 'pl' | 'fr')
+  // язык, на котором автор написал рецепт ('ru' | 'en' | 'pl' | 'fr' | 'uk')
   @Column({ length: 5, default: 'en' })
   originalLanguage: string;
 

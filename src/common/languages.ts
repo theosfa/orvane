@@ -1,6 +1,6 @@
 // common/languages.ts
 // единый список языков приложения — его же повторяет фронт (orvane-front/i18n/languages.ts)
-export const SUPPORTED_LANGUAGES = ['ru', 'en', 'pl', 'fr'] as const;
+export const SUPPORTED_LANGUAGES = ['ru', 'en', 'pl', 'fr', 'uk'] as const;
 export type Language = (typeof SUPPORTED_LANGUAGES)[number];
 
 export const DEFAULT_LANGUAGE: Language = 'en';

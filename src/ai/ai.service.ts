@@ -25,6 +25,7 @@ const LANG_NAMES: Record<Language, string> = {
   en: 'English',
   pl: 'Polish',
   fr: 'French',
+  uk: 'Ukrainian',
 };
 
 @Injectable()
