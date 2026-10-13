@@ -5,6 +5,7 @@ import {
   Column,
   ManyToOne,
   CreateDateColumn,
+  Index,
 } from 'typeorm';
 import { User } from '../users/users.entity';
 import { Recipe } from '../recipes/recipe.entity';
@@ -12,7 +13,11 @@ import { Recipe } from '../recipes/recipe.entity';
 export const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'] as const;
 export type MealType = (typeof MEAL_TYPES)[number];
 
+// сколько человек можно выбрать для одного приёма пищи
+export const MAX_MENU_SERVINGS = 12;
+
 @Entity('menu_entries')
+@Index(['userId', 'date'])
 export class MenuEntry {
   @PrimaryGeneratedColumn()
   id: number;
@@ -23,9 +28,9 @@ export class MenuEntry {
   @Column()
   userId: number;
 
-  // 0 = понедельник .. 6 = воскресенье
-  @Column('smallint')
-  dayOfWeek: number;
+  // конкретный день, 'YYYY-MM-DD' — можно планировать будущие недели и смотреть прошлые
+  @Column({ type: 'date' })
+  date: string;
 
   @Column({ type: 'varchar', length: 20, default: 'dinner' })
   mealType: MealType;
@@ -35,6 +40,10 @@ export class MenuEntry {
 
   @Column()
   recipeId: number;
+
+  // на сколько человек готовим — количества рецепта пересчитываются под это число
+  @Column({ type: 'smallint', default: 1 })
+  servings: number;
 
   @CreateDateColumn()
   createdAt: Date;

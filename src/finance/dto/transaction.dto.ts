@@ -13,9 +13,9 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { TRANSACTION_TYPES } from '../finance-types';
+import { DATE_RE } from '../../common/dates';
 import type { TransactionType } from '../finance-types';
 
-export const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;

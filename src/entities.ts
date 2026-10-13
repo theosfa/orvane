@@ -13,6 +13,7 @@ import { RefreshToken } from './auth/refresh-token.entity';
 import { Wallet } from './finance/wallet.entity';
 import { FinanceCategory } from './finance/finance-category.entity';
 import { FinanceTransaction } from './finance/finance-transaction.entity';
+import { Task } from './tasks/task.entity';
 
 export const ENTITIES = [
   User,
@@ -29,4 +30,5 @@ export const ENTITIES = [
   Wallet,
   FinanceCategory,
   FinanceTransaction,
+  Task,
 ];

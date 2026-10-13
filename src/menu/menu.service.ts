@@ -1,10 +1,15 @@
 // menu/menu.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Between, DataSource, In, Repository } from 'typeorm';
 import { MenuEntry } from './menu-entry.entity';
 import { Recipe } from '../recipes/recipe.entity';
-import { AddMenuEntryDto } from './dto/add-menu-entry.dto';
+import { RecipeLike } from '../recipes/recipe-like.entity';
+import { AddMenuEntryDto, MenuMealDto } from './dto/add-menu-entry.dto';
 import { RecipeLocalizer } from '../recipes/recipe-localizer.service';
 import {
   Totals,
@@ -13,43 +18,67 @@ import {
   roundTotals,
   computeRecipeTotals,
 } from '../recipes/recipe-totals';
+import { scaleAmount } from '../recipes/servings';
+import { addDays, isISODate } from '../common/dates';
 
+const MEAL_ORDER = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+// КБЖУ одной порции: рецепт целиком / на сколько человек он рассчитан
+function perServing(recipe: Recipe): Totals {
+  const t = computeRecipeTotals(recipe);
+  const n = recipe.servings || 1;
+  return {
+    calories: t.calories / n,
+    protein: t.protein / n,
+    fat: t.fat / n,
+    carbs: t.carbs / n,
+  };
+}
 
 @Injectable()
 export class MenuService {
   constructor(
+    private dataSource: DataSource,
     @InjectRepository(MenuEntry) private menuRepo: Repository<MenuEntry>,
     @InjectRepository(Recipe) private recipeRepo: Repository<Recipe>,
+    @InjectRepository(RecipeLike) private likeRepo: Repository<RecipeLike>,
     private localizer: RecipeLocalizer,
   ) {}
 
-  // меню на неделю: 7 дней, в каждом — приёмы пищи с посчитанными калориями/БЖУ
-  async getWeek(userId: number, lang: string) {
+  // меню на неделю с понедельника weekStart: 7 дней с датами, приёмы пищи и КБЖУ.
+  // Калории — на одного человека (сколько съест каждый), servings — на скольких готовим.
+  async getWeek(userId: number, weekStart: string, lang: string) {
+    const weekEnd = addDays(weekStart, 6);
     const entries = await this.menuRepo.find({
-      where: { userId },
+      where: { userId, date: Between(weekStart, weekEnd) },
       relations: {
         recipe: { ingredients: { ingredient: true }, translations: true },
       },
-      order: { dayOfWeek: 'ASC', id: 'ASC' },
+      order: { date: 'ASC', id: 'ASC' },
     });
     const names = await this.localizer.names(
       entries.map((e) => e.recipe),
       lang,
     );
 
-    const days = Array.from({ length: 7 }, (_, dayOfWeek) => {
-      const dayEntries = entries.filter((e) => e.dayOfWeek === dayOfWeek);
-      const meals = dayEntries.map((e) => {
-        const totals = roundTotals(computeRecipeTotals(e.recipe));
-        return {
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const date = addDays(weekStart, i);
+      const meals = entries
+        .filter((e) => e.date === date)
+        .sort(
+          (a, b) =>
+            MEAL_ORDER.indexOf(a.mealType) - MEAL_ORDER.indexOf(b.mealType) ||
+            a.id - b.id,
+        )
+        .map((e) => ({
           entryId: e.id,
           mealType: e.mealType,
           recipeId: e.recipe.id,
           recipeName: names.get(e.recipe.id)!.text,
-          ...totals,
-        };
-      });
-      const dayTotal = roundTotals(
+          servings: e.servings,
+          ...roundTotals(perServing(e.recipe)),
+        }));
+      const total = roundTotals(
         meals.reduce(
           (acc, m) =>
             addTotals(acc, {
@@ -61,34 +90,80 @@ export class MenuService {
           emptyTotals(),
         ),
       );
-      return { dayOfWeek, meals, total: dayTotal };
+      return { date, meals, total };
     });
 
     const weekTotal = roundTotals(
       days.reduce((acc, d) => addTotals(acc, d.total), emptyTotals()),
     );
 
-    return { days, weekTotal };
+    return { weekStart, days, weekTotal };
+  }
+
+  // в меню попадают только лайкнутые рецепты, которые юзер по-прежнему может видеть
+  private async assertLiked(userId: number, recipeIds: number[]) {
+    const unique = [...new Set(recipeIds)];
+    if (!unique.length) return;
+    const likes = await this.likeRepo.find({
+      where: { userId, recipeId: In(unique) },
+      relations: { recipe: true },
+    });
+    const allowed = new Set(
+      likes
+        .filter((l) => l.recipe.isPublic || l.recipe.authorId === userId)
+        .map((l) => l.recipeId),
+    );
+    const missing = unique.filter((id) => !allowed.has(id));
+    if (missing.length) {
+      throw new BadRequestException(
+        `Only liked recipes can be added to the menu (recipe ${missing.join(', ')})`,
+      );
+    }
+  }
+
+  private assertDate(date: string) {
+    if (!isISODate(date)) throw new BadRequestException('Invalid date');
   }
 
   async addEntry(userId: number, dto: AddMenuEntryDto) {
-    // в меню можно добавить только публичный или свой рецепт
-    const recipe = await this.recipeRepo.findOne({
-      where: [
-        { id: dto.recipeId, isPublic: true },
-        { id: dto.recipeId, authorId: userId },
-      ],
-    });
-    if (!recipe) throw new NotFoundException('Recipe not found');
-
-    const entry = this.menuRepo.create({
-      userId,
-      dayOfWeek: dto.dayOfWeek,
-      mealType: dto.mealType,
-      recipeId: recipe.id,
-    });
-    await this.menuRepo.save(entry);
+    this.assertDate(dto.date);
+    await this.assertLiked(userId, [dto.recipeId]);
+    const entry = await this.menuRepo.save(
+      this.menuRepo.create({
+        userId,
+        date: dto.date,
+        mealType: dto.mealType,
+        recipeId: dto.recipeId,
+        servings: dto.servings,
+      }),
+    );
     return { id: entry.id };
+  }
+
+  // день целиком: всё, что было на эту дату, заменяется переданным списком (атомарно)
+  async setDay(userId: number, date: string, meals: MenuMealDto[]) {
+    this.assertDate(date);
+    await this.assertLiked(
+      userId,
+      meals.map((m) => m.recipeId),
+    );
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(MenuEntry, { userId, date });
+      if (meals.length) {
+        await manager.save(
+          meals.map((m) =>
+            manager.create(MenuEntry, {
+              userId,
+              date,
+              mealType: m.mealType,
+              recipeId: m.recipeId,
+              servings: m.servings,
+            }),
+          ),
+        );
+      }
+    });
+    return { saved: meals.length };
   }
 
   async removeEntry(userId: number, entryId: number) {
@@ -97,10 +172,14 @@ export class MenuService {
     return { removed: true };
   }
 
-  // сумма ингредиентов по всем рецептам недельного меню — список покупок
-  async getShoppingList(userId: number, lang: string) {
+  // список покупок за выбранные дни: ингредиенты всех рецептов, пересчитанные
+  // на число человек в каждом приёме пищи, одинаковые продукты сложены
+  async getShoppingList(userId: number, dates: string[], lang: string) {
+    if (!dates.length) throw new BadRequestException('Choose at least one day');
+    dates.forEach((d) => this.assertDate(d));
+
     const entries = await this.menuRepo.find({
-      where: { userId },
+      where: { userId, date: In([...new Set(dates)]) },
       relations: {
         recipe: { ingredients: { ingredient: { translations: true } } },
       },
@@ -113,7 +192,11 @@ export class MenuService {
           ri.ingredient.translations?.find((t) => t.language === lang) ||
           ri.ingredient.translations?.find((t) => t.language === 'en');
         const name = translation?.name || ri.ingredient.slug;
-        const amount = Number(ri.amount);
+        const amount = scaleAmount(
+          Number(ri.amount),
+          entry.recipe.servings || 1,
+          entry.servings,
+        );
 
         const prev = totals.get(ri.ingredient.id);
         if (prev) prev.amount += amount;
