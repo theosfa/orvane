@@ -34,6 +34,23 @@ export class RecipesController {
     return this.recipesService.usedIngredients(req.user.userId, lang);
   }
 
+  // GET /recipes/feed?exclude=3,8&limit=5 — случайные публичные рецепты для ленты; раньше ':id'
+  @Get('feed')
+  feed(
+    @Req() req: any,
+    @Lang() lang: Language,
+    @Query('exclude') exclude?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const ids = (exclude ?? '')
+      .split(',')
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0)
+      .slice(-500);
+    const n = Math.min(Math.max(Number(limit) || 5, 1), 20);
+    return this.recipesService.feed(req.user.userId, lang, ids, n);
+  }
+
   // GET /recipes?q=potato&minCalories=200&maxCalories=500&ingredientIds=3,17
   @Get()
   findAll(

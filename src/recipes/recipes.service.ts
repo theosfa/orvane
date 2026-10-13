@@ -256,6 +256,21 @@ export class RecipesService {
     };
   }
 
+  // лента «как в рилсах»: случайные публичные рецепты целиком; exclude — уже показанные в этом круге
+  async feed(userId: number, lang: string, exclude: number[], limit: number) {
+    const qb = this.recipeRepo
+      .createQueryBuilder('r')
+      .select('r.id', 'id')
+      .where('r.isPublic = true');
+    if (exclude.length) qb.andWhere('r.id NOT IN (:...exclude)', { exclude });
+    const rows: { id: number }[] = await qb
+      .orderBy('RANDOM()')
+      .limit(limit)
+      .getRawMany();
+
+    return Promise.all(rows.map((r) => this.findOne(r.id, lang, userId)));
+  }
+
   async likeRecipe(userId: number, recipeId: number) {
     await this.findVisible(recipeId, userId);
 
