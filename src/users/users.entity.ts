@@ -20,6 +20,10 @@ export class User {
   @Column({ length: 5, default: 'ru' })
   language: string;
 
+  // стандартные категории и первый кошелёк уже созданы (даже если юзер их потом удалил)
+  @Column({ default: false })
+  financeSeeded: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 }
