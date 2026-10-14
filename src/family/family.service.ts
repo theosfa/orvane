@@ -42,6 +42,11 @@ export class FamilyService {
     return this.memberRepo.findOne({ where: { userId } });
   }
 
+  // для живых обновлений: кому сообщить об изменении приглашения
+  findInvite(inviteId: number) {
+    return this.inviteRepo.findOneBy({ id: inviteId });
+  }
+
   // область данных для запроса: личная — всегда можно; семейная — только участнику,
   // а менять её (access = 'edit') — только админу
   async scope(userId: number, name: ScopeName, access: 'view' | 'edit'): Promise<Scope> {
