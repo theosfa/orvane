@@ -12,6 +12,7 @@ import { RecipeTranslation } from './recipe-translation.entity';
 import { RecipeStepTranslation } from './recipe-step-translation.entity';
 import { RecipeLocalizer } from './recipe-localizer.service';
 import { TranslationModule } from '../translation/translation.module';
+import { UserFollow } from '../users/user-follow.entity';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { TranslationModule } from '../translation/translation.module';
       RecipeLike,
       RecipeTranslation,
       RecipeStepTranslation,
+      UserFollow,
     ]),
     TranslationModule,
   ],

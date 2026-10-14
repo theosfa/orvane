@@ -1,5 +1,6 @@
 // entities.ts — единый список сущностей для приложения, CLI миграций и тестов
 import { User } from './users/users.entity';
+import { UserFollow } from './users/user-follow.entity';
 import { Ingredient } from './ingredients/ingredient.entity';
 import { IngredientTranslation } from './ingredients/ingredient-translation.entity';
 import { Recipe } from './recipes/recipe.entity';
@@ -18,6 +19,7 @@ import { Family, FamilyInvite, FamilyMember } from './family/family.entity';
 
 export const ENTITIES = [
   User,
+  UserFollow,
   Ingredient,
   IngredientTranslation,
   Recipe,

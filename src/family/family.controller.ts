@@ -20,7 +20,11 @@ import { FamilyNameDto, InviteDto, SetRoleDto } from './dto/family.dto';
 import { FamilyEventsService } from './family-events.service';
 import { originOf } from './family-events.interceptor';
 
-type Audience = { families?: (number | null | undefined)[]; users?: number[]; emails?: string[] };
+type Audience = {
+  families?: (number | null | undefined)[];
+  users?: number[];
+  emails?: string[];
+};
 
 // каждый ответ — актуальное состояние семьи (как GET /family)
 @Controller('family')
@@ -59,13 +63,17 @@ export class FamilyController {
 
   @Post()
   create(@Req() req: any, @Body() dto: FamilyNameDto, @Lang() lang: Language) {
-    return this.tell(req, {}, () => this.family.create(req.user.userId, req.user.email, dto.name, lang));
+    return this.tell(req, {}, () =>
+      this.family.create(req.user.userId, req.user.email, dto.name, lang),
+    );
   }
 
   @Patch()
   async rename(@Req() req: any, @Body() dto: FamilyNameDto) {
     const families = [await this.myFamilyId(req)];
-    return this.tell(req, { families }, () => this.family.rename(req.user.userId, req.user.email, dto.name));
+    return this.tell(req, { families }, () =>
+      this.family.rename(req.user.userId, req.user.email, dto.name),
+    );
   }
 
   @Post('invites')
@@ -79,8 +87,10 @@ export class FamilyController {
   @Delete('invites/:id')
   async cancelInvite(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
     const invite = await this.family.findInvite(id);
-    return this.tell(req, { families: [invite?.familyId], emails: invite ? [invite.email] : [] }, () =>
-      this.family.cancelInvite(req.user.userId, req.user.email, id),
+    return this.tell(
+      req,
+      { families: [invite?.familyId], emails: invite ? [invite.email] : [] },
+      () => this.family.cancelInvite(req.user.userId, req.user.email, id),
     );
   }
 
@@ -109,12 +119,20 @@ export class FamilyController {
   ) {
     const families = [await this.myFamilyId(req)];
     return this.tell(req, { families }, () =>
-      this.family.setRole(req.user.userId, req.user.email, memberUserId, dto.role),
+      this.family.setRole(
+        req.user.userId,
+        req.user.email,
+        memberUserId,
+        dto.role,
+      ),
     );
   }
 
   @Delete('members/:userId')
-  async removeMember(@Req() req: any, @Param('userId', ParseIntPipe) memberUserId: number) {
+  async removeMember(
+    @Req() req: any,
+    @Param('userId', ParseIntPipe) memberUserId: number,
+  ) {
     const families = [await this.myFamilyId(req)];
     return this.tell(req, { families, users: [memberUserId] }, () =>
       this.family.removeMember(req.user.userId, req.user.email, memberUserId),
@@ -124,6 +142,8 @@ export class FamilyController {
   @Post('leave')
   async leave(@Req() req: any) {
     const families = [await this.myFamilyId(req)];
-    return this.tell(req, { families }, () => this.family.leave(req.user.userId, req.user.email));
+    return this.tell(req, { families }, () =>
+      this.family.leave(req.user.userId, req.user.email),
+    );
   }
 }

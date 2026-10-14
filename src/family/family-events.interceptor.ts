@@ -1,6 +1,11 @@
 // family/family-events.interceptor.ts — после удачного изменения семейных данных
 // (menu, tasks, finance с ?scope=family) сообщает участникам семьи, что их пора перечитать
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import {
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  NestInterceptor,
+} from '@nestjs/common';
 import { tap } from 'rxjs';
 import { FamilyEventsService, FamilyTopic } from './family-events.service';
 import { FamilyService } from './family.service';
@@ -35,7 +40,13 @@ export class FamilyEventsInterceptor implements NestInterceptor {
         if (!userId) return;
         void this.family
           .membership(userId)
-          .then((m) => m && this.events.notify(topic, originOf(req), { families: [m.familyId] }))
+          .then(
+            (m) =>
+              m &&
+              this.events.notify(topic, originOf(req), {
+                families: [m.familyId],
+              }),
+          )
           .catch(() => undefined); // обновления — не повод ронять уже выполненный запрос
       }),
     );

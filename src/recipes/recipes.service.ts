@@ -14,6 +14,8 @@ import { Ingredient } from '../ingredients/ingredient.entity';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
 import { computeRecipeTotals } from './recipe-totals';
 import { RecipeLocalizer, LocalizedText } from './recipe-localizer.service';
+import { UserFollow } from '../users/user-follow.entity';
+import { publicUser } from '../users/public-user';
 
 @Injectable()
 export class RecipesService {
@@ -27,6 +29,8 @@ export class RecipesService {
     private ingredientRepo: Repository<Ingredient>,
     @InjectRepository(RecipeLike)
     private recipeLikeRepo: Repository<RecipeLike>,
+    @InjectRepository(UserFollow)
+    private followRepo: Repository<UserFollow>,
     private localizer: RecipeLocalizer,
   ) {}
 
@@ -102,10 +106,12 @@ export class RecipesService {
       relations: {
         ingredients: { ingredient: { translations: true } },
         translations: true,
+        author: true,
       },
       order: { id: 'DESC' },
     });
     const likedIds = await this.likedRecipeIds(userId);
+    const followed = await this.followedIds(userId);
     const q = filters.q?.trim().toLowerCase();
     const required = filters.ingredientIds ?? [];
 
@@ -137,8 +143,56 @@ export class RecipesService {
     // переводим только то, что реально покажем
     const names = await this.localizer.names(matched, lang);
     return matched.map((r) =>
-      this.toListItem(r, userId, likedIds.has(r.id), names.get(r.id)!),
+      this.toListItem(
+        r,
+        userId,
+        likedIds.has(r.id),
+        names.get(r.id)!,
+        followed,
+      ),
     );
+  }
+
+  // публичные рецепты автора — для его страницы (/people/:username)
+  async publicByAuthor(authorId: number, viewerId: number, lang: string) {
+    const recipes = await this.recipeRepo.find({
+      where: { authorId, isPublic: true },
+      relations: {
+        ingredients: { ingredient: true },
+        translations: true,
+        author: true,
+      },
+      order: { id: 'DESC' },
+    });
+    const [likedIds, followed, names] = await Promise.all([
+      this.likedRecipeIds(viewerId),
+      this.followedIds(viewerId),
+      this.localizer.names(recipes, lang),
+    ]);
+    return recipes.map((r) =>
+      this.toListItem(
+        r,
+        viewerId,
+        likedIds.has(r.id),
+        names.get(r.id)!,
+        followed,
+      ),
+    );
+  }
+
+  // за кем юзер следит
+  private async followedIds(userId: number): Promise<Set<number>> {
+    const rows = await this.followRepo.find({
+      select: { followeeId: true },
+      where: { followerId: userId },
+    });
+    return new Set(rows.map((f) => f.followeeId));
+  }
+
+  // автор рецепта, как его видят другие; null — аккаунт удалён
+  private authorOf(r: Recipe, followed: Set<number>) {
+    if (!r.author) return null;
+    return { ...publicUser(r.author), followed: followed.has(r.author.id) };
   }
 
   // продукты, которые встречаются в доступных юзеру рецептах — варианты для фильтра
@@ -170,6 +224,7 @@ export class RecipesService {
     userId: number,
     liked: boolean,
     name: LocalizedText,
+    followed: Set<number>,
   ) {
     return {
       id: r.id,
@@ -180,6 +235,7 @@ export class RecipesService {
       isMine: r.authorId === userId,
       servings: r.servings,
       calories: Math.round(computeRecipeTotals(r).calories),
+      author: this.authorOf(r, followed),
     };
   }
 
@@ -191,6 +247,7 @@ export class RecipesService {
         ingredients: { ingredient: { translations: true } },
         steps: { translations: true },
         translations: true,
+        author: true,
       },
     });
     if (!recipe) throw new NotFoundException('Recipe not found');
@@ -231,10 +288,14 @@ export class RecipesService {
     const stepTexts = await this.localizer.steps(recipe, recipe.steps, lang);
     const steps = recipe.steps
       .sort((a, b) => a.stepNum - b.stepNum)
-      .map((s) => ({ stepNum: s.stepNum, stepText: stepTexts.get(s.id)!.text }));
+      .map((s) => ({
+        stepNum: s.stepNum,
+        stepText: stepTexts.get(s.id)!.text,
+      }));
 
     const liked =
-      (await this.recipeLikeRepo.count({ where: { userId, recipeId: id } })) > 0;
+      (await this.recipeLikeRepo.count({ where: { userId, recipeId: id } })) >
+      0;
 
     return {
       id: recipe.id,
@@ -251,6 +312,7 @@ export class RecipesService {
       liked,
       isPublic: recipe.isPublic,
       isMine: recipe.authorId === userId,
+      author: this.authorOf(recipe, await this.followedIds(userId)),
       total: {
         calories: +totalCalories.toFixed(2),
         protein: +totalProtein.toFixed(2),
@@ -260,19 +322,44 @@ export class RecipesService {
     };
   }
 
-  // лента «как в рилсах»: случайные публичные рецепты целиком; exclude — уже показанные в этом круге
+  // лента «как в рилсах»: случайные публичные рецепты целиком; exclude — уже показанные в этом круге.
+  // Сначала — рецепты тех, на кого юзер подписан, потом остальные
   async feed(userId: number, lang: string, exclude: number[], limit: number) {
-    const qb = this.recipeRepo
-      .createQueryBuilder('r')
-      .select('r.id', 'id')
-      .where('r.isPublic = true');
-    if (exclude.length) qb.andWhere('r.id NOT IN (:...exclude)', { exclude });
-    const rows: { id: number }[] = await qb
-      .orderBy('RANDOM()')
-      .limit(limit)
-      .getRawMany();
+    const followed = [...(await this.followedIds(userId))];
+    const pick = async (
+      authors: 'followed' | 'others',
+      count: number,
+      skip: number[],
+    ) => {
+      if (count <= 0 || (authors === 'followed' && !followed.length)) return [];
+      const qb = this.recipeRepo
+        .createQueryBuilder('r')
+        .select('r.id', 'id')
+        .where('r.isPublic = true');
+      if (skip.length) qb.andWhere('r.id NOT IN (:...skip)', { skip });
+      if (followed.length) {
+        qb.andWhere(
+          authors === 'followed'
+            ? 'r.authorId IN (:...followed)'
+            : '(r.authorId IS NULL OR r.authorId NOT IN (:...followed))',
+          { followed },
+        );
+      }
+      const rows: { id: number }[] = await qb
+        .orderBy('RANDOM()')
+        .limit(count)
+        .getRawMany();
+      return rows.map((r) => r.id);
+    };
 
-    return Promise.all(rows.map((r) => this.findOne(r.id, lang, userId)));
+    const first = await pick('followed', limit, exclude);
+    const rest = await pick('others', limit - first.length, [
+      ...exclude,
+      ...first,
+    ]);
+    return Promise.all(
+      [...first, ...rest].map((id) => this.findOne(id, lang, userId)),
+    );
   }
 
   async likeRecipe(userId: number, recipeId: number) {
@@ -302,7 +389,11 @@ export class RecipesService {
     const likes = await this.recipeLikeRepo.find({
       where: { userId },
       relations: {
-        recipe: { ingredients: { ingredient: true }, translations: true },
+        recipe: {
+          ingredients: { ingredient: true },
+          translations: true,
+          author: true,
+        },
       },
       order: { createdAt: 'DESC' },
     });
@@ -311,8 +402,9 @@ export class RecipesService {
       .map((l) => l.recipe)
       .filter((r) => r && (r.isPublic || r.authorId === userId));
     const names = await this.localizer.names(recipes, lang);
+    const followed = await this.followedIds(userId);
     return recipes.map((r) =>
-      this.toListItem(r, userId, true, names.get(r.id)!),
+      this.toListItem(r, userId, true, names.get(r.id)!, followed),
     );
   }
 

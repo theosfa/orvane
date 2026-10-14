@@ -10,7 +10,9 @@ import { FamilyEventsInterceptor } from './family-events.interceptor';
 import { User } from '../users/users.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Family, FamilyMember, FamilyInvite, User])],
+  imports: [
+    TypeOrmModule.forFeature([Family, FamilyMember, FamilyInvite, User]),
+  ],
   providers: [
     FamilyService,
     FamilyEventsService,

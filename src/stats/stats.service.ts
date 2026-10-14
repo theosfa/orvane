@@ -16,7 +16,8 @@ export type UserStats = {
 };
 
 // драйверы отдают колонку date по-разному: строкой 'YYYY-MM-DD' или Date
-const isoDay = (v: string | Date) => (typeof v === 'string' ? v.slice(0, 10) : v.toISOString().slice(0, 10));
+const isoDay = (v: string | Date) =>
+  typeof v === 'string' ? v.slice(0, 10) : v.toISOString().slice(0, 10);
 
 @Injectable()
 export class StatsService {
@@ -39,6 +40,11 @@ export class StatsService {
       this.taskRepo.countBy({ userId, done: true }),
     ]);
     const weeks = new Set(days.map((d) => startOfWeek(isoDay(d.date))));
-    return { recipesWritten, recipesLiked, weeksPlanned: weeks.size, tasksDone };
+    return {
+      recipesWritten,
+      recipesLiked,
+      weeksPlanned: weeks.size,
+      tasksDone,
+    };
   }
 }

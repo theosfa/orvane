@@ -14,6 +14,7 @@ import { FinanceModule } from './finance/finance.module';
 import { TasksModule } from './tasks/tasks.module';
 import { FamilyModule } from './family/family.module';
 import { StatsModule } from './stats/stats.module';
+import { PeopleModule } from './people/people.module';
 import { ENTITIES } from './entities';
 
 dotenv.config();
@@ -45,6 +46,7 @@ dotenv.config();
     TasksModule,
     FamilyModule,
     StatsModule,
+    PeopleModule,
   ],
   controllers: [AppController],
   providers: [AppService],

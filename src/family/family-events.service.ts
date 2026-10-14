@@ -16,7 +16,9 @@ type FamilyEvent = {
 };
 
 // событие уходит без самих данных: клиент просто перечитывает нужное через обычный API
-export type LiveMessage = { data: { topic: FamilyTopic; origin: string | null } | { topic: 'ping' } };
+export type LiveMessage = {
+  data: { topic: FamilyTopic; origin: string | null } | { topic: 'ping' };
+};
 
 const PING_MS = 25_000; // держит соединение живым через прокси и туннели
 
@@ -25,7 +27,8 @@ export class FamilyEventsService {
   private events = new Subject<FamilyEvent>();
 
   constructor(
-    @InjectRepository(FamilyMember) private memberRepo: Repository<FamilyMember>,
+    @InjectRepository(FamilyMember)
+    private memberRepo: Repository<FamilyMember>,
     @InjectRepository(User) private userRepo: Repository<User>,
   ) {}
 
@@ -43,18 +46,32 @@ export class FamilyEventsService {
   async notify(
     topic: FamilyTopic,
     origin: string | null,
-    { families = [], users = [], emails = [] }: { families?: (number | null | undefined)[]; users?: number[]; emails?: string[] },
+    {
+      families = [],
+      users = [],
+      emails = [],
+    }: {
+      families?: (number | null | undefined)[];
+      users?: number[];
+      emails?: string[];
+    },
   ) {
     const userIds = new Set(users);
-    const familyIds = families.filter((id): id is number => typeof id === 'number');
+    const familyIds = families.filter(
+      (id): id is number => typeof id === 'number',
+    );
     if (familyIds.length) {
-      const members = await this.memberRepo.find({ where: { familyId: In(familyIds) } });
+      const members = await this.memberRepo.find({
+        where: { familyId: In(familyIds) },
+      });
       members.forEach((m) => userIds.add(m.userId));
     }
     if (emails.length) {
       const found = await this.userRepo
         .createQueryBuilder('u')
-        .where('LOWER(u.email) IN (:...emails)', { emails: emails.map((e) => e.toLowerCase()) })
+        .where('LOWER(u.email) IN (:...emails)', {
+          emails: emails.map((e) => e.toLowerCase()),
+        })
         .getMany();
       found.forEach((u) => userIds.add(u.id));
     }

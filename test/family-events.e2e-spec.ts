@@ -2,7 +2,10 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { Subscription } from 'rxjs';
 import { createApp, registerUser } from './helpers';
-import { FamilyEventsService, LiveMessage } from '../src/family/family-events.service';
+import {
+  FamilyEventsService,
+  LiveMessage,
+} from '../src/family/family-events.service';
 
 type User = Awaited<ReturnType<typeof registerUser>>;
 
@@ -21,7 +24,8 @@ describe('Family live updates (e2e)', () => {
     await app.close();
   });
 
-  const userIdOf = async (u: User) => (await http().get('/auth/profile').set(u.auth)).body.user.id as number;
+  const userIdOf = async (u: User) =>
+    (await http().get('/auth/profile').set(u.auth)).body.user.id as number;
 
   // events a user's stream receives, without the pings
   async function listen(u: User) {
@@ -40,10 +44,21 @@ describe('Family live updates (e2e)', () => {
   async function family() {
     const admin = await registerUser(app);
     const member = await registerUser(app);
-    await http().post('/family?lang=en').set(admin.auth).send({ name: 'Smiths' }).expect(201);
-    await http().post('/family/invites').set(admin.auth).send({ email: member.email }).expect(201);
+    await http()
+      .post('/family?lang=en')
+      .set(admin.auth)
+      .send({ name: 'Smiths' })
+      .expect(201);
+    await http()
+      .post('/family/invites')
+      .set(admin.auth)
+      .send({ email: member.email })
+      .expect(201);
     const { body } = await http().get('/family').set(member.auth);
-    await http().post(`/family/invitations/${body.invitations[0].id}/accept`).set(member.auth).expect(201);
+    await http()
+      .post(`/family/invitations/${body.invitations[0].id}/accept`)
+      .set(member.auth)
+      .expect(201);
     return { admin, member };
   }
 
@@ -68,9 +83,17 @@ describe('Family live updates (e2e)', () => {
     const { admin, member } = await family();
     const memberGot = await listen(member);
 
-    await http().post('/tasks').set(admin.auth).send({ title: 'Mine', date: '2026-10-14' }).expect(201);
+    await http()
+      .post('/tasks')
+      .set(admin.auth)
+      .send({ title: 'Mine', date: '2026-10-14' })
+      .expect(201);
     // members can't change family data
-    await http().post('/tasks?scope=family').set(member.auth).send({ title: 'No', date: '2026-10-14' }).expect(403);
+    await http()
+      .post('/tasks?scope=family')
+      .set(member.auth)
+      .send({ title: 'No', date: '2026-10-14' })
+      .expect(403);
     await settle();
 
     expect(memberGot).toEqual([]);
@@ -79,20 +102,34 @@ describe('Family live updates (e2e)', () => {
   it('tells the invited user and the family about invites, and a removed member', async () => {
     const admin = await registerUser(app);
     const guest = await registerUser(app);
-    await http().post('/family?lang=en').set(admin.auth).send({ name: 'Smiths' }).expect(201);
+    await http()
+      .post('/family?lang=en')
+      .set(admin.auth)
+      .send({ name: 'Smiths' })
+      .expect(201);
     const guestGot = await listen(guest);
 
-    await http().post('/family/invites').set(admin.auth).send({ email: guest.email }).expect(201);
+    await http()
+      .post('/family/invites')
+      .set(admin.auth)
+      .send({ email: guest.email })
+      .expect(201);
     await settle();
     expect(guestGot).toEqual([{ topic: 'family', origin: null }]);
 
     const adminGot = await listen(admin);
     const { body } = await http().get('/family').set(guest.auth);
-    await http().post(`/family/invitations/${body.invitations[0].id}/accept`).set(guest.auth).expect(201);
+    await http()
+      .post(`/family/invitations/${body.invitations[0].id}/accept`)
+      .set(guest.auth)
+      .expect(201);
     await settle();
     expect(adminGot).toEqual([{ topic: 'family', origin: null }]);
 
-    await http().delete(`/family/members/${await userIdOf(guest)}`).set(admin.auth).expect(200);
+    await http()
+      .delete(`/family/members/${await userIdOf(guest)}`)
+      .set(admin.auth)
+      .expect(200);
     await settle();
     expect(guestGot).toHaveLength(3); // invite, own accept, removal
   });
@@ -104,7 +141,10 @@ describe('Family live updates (e2e)', () => {
     await app.listen(0);
     const { port } = app.getHttpServer().address();
     const ctrl = new AbortController();
-    const res = await fetch(`http://127.0.0.1:${port}/family/events`, { headers: u.auth, signal: ctrl.signal });
+    const res = await fetch(`http://127.0.0.1:${port}/family/events`, {
+      headers: u.auth,
+      signal: ctrl.signal,
+    });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/event-stream');
     ctrl.abort();

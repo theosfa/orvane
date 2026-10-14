@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'crypto';
-import { UsersService } from '../users/users.service';
+import { UsersService, ProfileFields } from '../users/users.service';
 import { User } from '../users/users.entity';
 import { RefreshToken } from './refresh-token.entity';
 
@@ -122,12 +122,16 @@ export class AuthService {
         email: user.email,
         createdAt: user.createdAt,
         language: user.language,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        showFullName: user.showFullName,
       },
     };
   }
 
-  async updateProfile(userId: number, data: { language: string }) {
-    await this.usersService.updateLanguage(userId, data.language);
+  async updateProfile(userId: number, data: ProfileFields) {
+    await this.usersService.updateProfile(userId, data);
     return this.getProfile(userId);
   }
 }
