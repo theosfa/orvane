@@ -7,9 +7,10 @@ import {
 import { IngredientsService } from '../ingredients/ingredients.service';
 import { toLanguage, type Language } from '../common/languages';
 import { clampServings } from '../recipes/servings';
+import { sanitizeNutrition } from '../ingredients/ingredient-name';
 
-// ingredientId = null — модель предложила продукт, которого нет в базе;
-// фронт покажет его, чтобы юзер выбрал замену сам (раньше такие молча выкидывались)
+// продукты, которых нет в базе, добавляются в неё с КБЖУ от модели;
+// ingredientId = null — только если модель не дала КБЖУ: фронт покажет продукт, чтобы юзер выбрал замену сам
 type GeneratedRecipe = {
   name: string;
   servings: number;
@@ -17,7 +18,13 @@ type GeneratedRecipe = {
   steps: { stepNum: number; stepText: string }[];
 };
 
-type ModelIngredient = { name?: string; searchName?: string; amount?: number };
+type ModelIngredient = {
+  name?: string;
+  searchName?: string;
+  baseName?: string;
+  amount?: number;
+  per100g?: unknown;
+};
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = process.env.CHAT_GPT_MODEL || 'gpt-4o-mini';
@@ -47,7 +54,7 @@ export class AiService {
     const systemPrompt = [
       'You are an experienced chef writing recipes for a meal-planning app. Home cooks must be able to follow them without guessing.',
       'Respond with ONLY strict JSON, no markdown, matching exactly this shape:',
-      '{"name": string, "servings": number, "ingredients": [{"name": string, "searchName": string, "amount": number}], "steps": [string]}',
+      '{"name": string, "servings": number, "ingredients": [{"name": string, "searchName": string, "baseName": string, "amount": number, "per100g": {"calories": number, "protein": number, "fat": number, "carbs": number}}], "steps": [string]}',
       '"servings" is how many people the amounts feed (an integer, usually 2-4 unless the request says otherwise).',
       '',
       'Ingredients:',
@@ -55,6 +62,8 @@ export class AiService {
       '- "amount" is grams (convert spoons/pieces/ml to an approximate gram weight; 1 tsp salt ≈ 6 g, 1 tbsp oil ≈ 14 g, 1 medium potato ≈ 170 g).',
       '- "name" is the ingredient as shown to the user, in ' + language + ', with its preparation if relevant (e.g. "onion, finely diced").',
       '- "searchName" is a short generic ENGLISH singular noun phrase for database lookup, no preparation words (e.g. "onion", "olive oil", "chicken breast", "black pepper").',
+      '- "baseName" is the same product as searchName but in ' + language + ', a generic product name without preparation (e.g. "onion" -> the plain word for onion).',
+      '- "per100g" is the typical nutrition of 100 g of that product in its raw/as-sold form (as in USDA tables): kcal and grams of protein, fat, carbohydrates. Always fill it, use 0 for salt and water.',
       '',
       'Steps (in ' + language + '):',
       '- 5 to 12 steps, in cooking order, each one or two full sentences.',
@@ -111,23 +120,21 @@ export class AiService {
       throw new BadGatewayException('AI assistant returned malformed JSON');
     }
 
-    const ingredients = await Promise.all(
-      (parsed.ingredients ?? [])
-        .filter(
-          (i) =>
-            (i.name || i.searchName) &&
-            Number.isFinite(i.amount) &&
-            (i.amount as number) > 0,
-        )
-        .map(async (i) => {
-          const match = await this.matchIngredient(i.searchName || i.name!, lang);
-          return {
-            ingredientId: match?.id ?? null,
-            name: match?.name ?? i.name ?? i.searchName!,
-            amount: Math.round(i.amount!),
-          };
-        }),
-    );
+    // по очереди, а не параллельно: один и тот же новый продукт в рецепте дважды не должен создаваться дважды
+    const ingredients: GeneratedRecipe['ingredients'] = [];
+    for (const i of parsed.ingredients ?? []) {
+      const searchName = (i.searchName || i.name || '').trim();
+      if (!searchName || !Number.isFinite(i.amount) || (i.amount as number) <= 0) continue;
+      const match = await this.ingredientsService.findOrCreateForAi(
+        { searchName, localName: i.baseName, nutrition: sanitizeNutrition(i.per100g) },
+        lang,
+      );
+      ingredients.push({
+        ingredientId: match?.id ?? null,
+        name: match?.name ?? i.name ?? searchName,
+        amount: Math.round(i.amount!),
+      });
+    }
 
     return {
       name: parsed.name?.trim() || 'AI-suggested recipe',
@@ -137,11 +144,5 @@ export class AiService {
         .filter((stepText) => typeof stepText === 'string' && stepText.trim())
         .map((stepText, idx) => ({ stepNum: idx + 1, stepText: stepText.trim() })),
     };
-  }
-
-  // лучший кандидат в базе по английскому searchName ("olive oil" -> "Oil, olive, ..."); null — пусть юзер выберет сам
-  private async matchIngredient(searchName: string, lang: string) {
-    const [best] = await this.ingredientsService.search(searchName.toLowerCase(), lang, 1);
-    return best ?? null;
   }
 }

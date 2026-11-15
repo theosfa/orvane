@@ -5,6 +5,9 @@ import { In, Repository } from 'typeorm';
 import { Ingredient } from './ingredient.entity';
 import { IngredientTranslation } from './ingredient-translation.entity';
 import { TranslationService } from '../translation/translation.service';
+import { ingredientKey, type Nutrition } from './ingredient-name';
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 @Injectable()
 export class IngredientsService {
@@ -153,6 +156,77 @@ export class IngredientsService {
       carbsPer100g: data.carbsPer100g,
       translations: [{ language: lang, name: data.name }],
     });
+  }
+
+  // продукт для AI-рецепта: ищем по английскому названию (точное совпадение нормализованного ключа),
+  // а если такого нет и модель дала КБЖУ — добавляем в базу (en + название на языке юзера).
+  // null — не нашли и создать не из чего, юзер выберет продукт сам.
+  async findOrCreateForAi(
+    input: { searchName: string; localName?: string; nutrition: Nutrition | null },
+    lang: string,
+  ) {
+    const key = ingredientKey(input.searchName);
+    if (!key) return null;
+
+    const existingId = await this.findIdByKey(key);
+    if (existingId) return this.findOne(existingId, lang);
+    if (!input.nutrition) return null;
+
+    const isLatin = /^[\x20-\x7E]+$/.test(input.searchName.trim());
+    const enName = isLatin ? capitalize(input.searchName.trim()) : null;
+    const localName = input.localName?.trim() ? capitalize(input.localName.trim()) : null;
+    const translations = new Map<string, string>();
+    if (enName) translations.set('en', enName);
+    if (localName && lang !== 'en') translations.set(lang, localName);
+    if (!translations.size) translations.set(lang, localName ?? capitalize(input.searchName.trim()));
+
+    // slug = ключ: параллельный запрос с тем же продуктом упрётся в unique и возьмёт уже созданный
+    const inserted = await this.ingredientRepo
+      .createQueryBuilder()
+      .insert()
+      .values({ slug: key, ...input.nutrition })
+      .orIgnore()
+      .returning(['id'])
+      .execute();
+    const newId = (inserted.raw as { id: number }[])[0]?.id;
+    if (newId) {
+      await this.translationRepo
+        .createQueryBuilder()
+        .insert()
+        .values(
+          [...translations].map(([language, name]) => ({
+            ingredient: { id: newId },
+            language,
+            name,
+          })),
+        )
+        .orIgnore()
+        .execute();
+    }
+
+    const ing = await this.ingredientRepo.findOne({ where: { slug: key } });
+    return ing ? this.findOne(ing.id, lang) : null;
+  }
+
+  // id продукта, чей slug или английское название даёт тот же нормализованный ключ
+  private async findIdByKey(key: string): Promise<number | null> {
+    const bySlug = await this.ingredientRepo.findOne({ where: { slug: key } });
+    if (bySlug) return bySlug.id;
+
+    // грубый префильтр по началу первого слова, точная проверка — в JS
+    const first = key.split('-')[0];
+    const stem = first.length > 3 ? first.slice(0, -1) : first;
+    const escape = (v: string) => v.replace(/[\\%_]/g, '\\$&');
+    const rows: { id: number; name: string; slug: string }[] = await this.translationRepo.query(
+      `SELECT t."ingredientId" AS id, t.name, i.slug
+         FROM ingredient_translations t
+         JOIN ingredients i ON i.id = t."ingredientId"
+        WHERE t.language = 'en' AND (t.name ILIKE $1 OR i.slug ILIKE $1)
+        ORDER BY t."ingredientId"`,
+      [`%${escape(stem)}%`],
+    );
+    const hit = rows.find((r) => ingredientKey(r.name) === key || ingredientKey(r.slug) === key);
+    return hit?.id ?? null;
   }
 
   async create(data: {
