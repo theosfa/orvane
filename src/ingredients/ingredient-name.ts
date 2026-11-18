@@ -7,6 +7,7 @@ const DESCRIPTORS = new Set([
   'fresh', 'raw', 'large', 'small', 'medium', 'big', 'ripe', 'whole', 'organic',
   'boneless', 'skinless', 'extra', 'virgin', 'chopped', 'sliced', 'diced', 'minced',
   'peeled', 'grated', 'shredded', 'crushed', 'finely', 'roughly', 'of', 'a', 'the',
+  'groats', // buckwheat groats = buckwheat
 ]);
 
 function singular(word: string): string {

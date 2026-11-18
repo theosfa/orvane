@@ -14,6 +14,8 @@ describe('ingredientKey', () => {
     expect(ingredientKey('egg')).not.toBe(ingredientKey('eggplant'));
     expect(ingredientKey('cream')).not.toBe(ingredientKey('sour cream'));
     expect(ingredientKey('Glass')).toBe('glass');
+    expect(ingredientKey('buckwheat groats')).toBe('buckwheat');
+    expect(ingredientKey('ground beef')).not.toBe(ingredientKey('beef'));
   });
 
   it('works for non-latin names', () => {
