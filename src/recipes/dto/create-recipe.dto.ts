@@ -8,9 +8,12 @@ import {
   IsBoolean,
   IsOptional,
   Max,
+  IsUUID,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { MAX_SERVINGS } from '../servings';
+import { MAX_PHOTOS_PER_RECIPE } from '../../photos/photos.service';
 
 class RecipeIngredientDto {
   @IsInt()
@@ -53,4 +56,19 @@ export class CreateRecipeDto {
   @ValidateNested({ each: true })
   @Type(() => RecipeStepDto)
   steps: RecipeStepDto[];
+
+  // фото, загруженные заранее (POST /photos или генерация ИИ); первое — главное
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_PHOTOS_PER_RECIPE)
+  @IsUUID('4', { each: true })
+  photoIds?: string[];
+}
+
+// POST /recipes/:id/photos — добавить уже загруженные фото к своему рецепту
+export class AttachPhotosDto {
+  @IsArray()
+  @ArrayMaxSize(MAX_PHOTOS_PER_RECIPE)
+  @IsUUID('4', { each: true })
+  photoIds: string[];
 }

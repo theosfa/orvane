@@ -15,6 +15,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { FamilyModule } from './family/family.module';
 import { StatsModule } from './stats/stats.module';
 import { PeopleModule } from './people/people.module';
+import { PhotosModule } from './photos/photos.module';
 import { ENTITIES } from './entities';
 
 dotenv.config();
@@ -47,6 +48,7 @@ dotenv.config();
     FamilyModule,
     StatsModule,
     PeopleModule,
+    PhotosModule,
   ],
   controllers: [AppController],
   providers: [AppService],

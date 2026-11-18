@@ -4,11 +4,14 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { IngredientsService } from '../ingredients/ingredients.service';
 import { toLanguage, type Language } from '../common/languages';
 import { clampServings } from '../recipes/servings';
 import { sanitizeNutrition } from '../ingredients/ingredient-name';
+import { PhotosService } from '../photos/photos.service';
 import { checkTarget, computeTotals, type ModelRecipe } from './recipe-target';
 
 // продукты, которых нет в базе, добавляются в неё с КБЖУ от модели;
@@ -23,6 +26,13 @@ type GeneratedRecipe = {
 type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_IMAGES_URL = 'https://api.openai.com/v1/images/generations';
+// gpt-image-2, quality low: ~12 c, реалистичная подача, меньше всего токенов из проверенных
+// (gpt-image-1-mini low — ~9 c, заметно проще картинка). Переопределяется через IMAGE_MODEL / IMAGE_QUALITY.
+const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
+const DEFAULT_IMAGE_QUALITY = 'low';
+// сколько фото блюд один человек может сгенерировать за сутки — чтобы счёт за OpenAI не улетел
+const AI_IMAGES_PER_DAY = 20;
 // gpt-5.4-mini: ~4 c на рецепт и хорошо держит цели по КБЖУ; полные gpt-5.5+ заметно лучше пишут,
 // но отвечают 40+ c — больше таймаута прокси фронта. Переопределяется через CHAT_GPT_MODEL.
 const DEFAULT_MODEL = 'gpt-5.4-mini';
@@ -75,7 +85,57 @@ function buildSystemPrompt(language: string): string {
 export class AiService {
   private readonly logger = new Logger(AiService.name);
 
-  constructor(private ingredientsService: IngredientsService) {}
+  constructor(
+    private ingredientsService: IngredientsService,
+    private photos: PhotosService,
+  ) {}
+
+  // фото готового блюда: генерируем по названию и составу, сохраняем как обычное загруженное фото
+  async generateImage(userId: number, name: string, ingredients: string[]) {
+    const apiKey = process.env.CHAT_GPT_KEY;
+    if (!apiKey) throw new InternalServerErrorException('AI assistant is not configured');
+
+    const used = await this.photos.countAiSince(userId, new Date(Date.now() - 24 * 60 * 60 * 1000));
+    if (used >= AI_IMAGES_PER_DAY) {
+      throw new HttpException('Daily limit of AI photos reached', HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    const list = ingredients.map((i) => i.trim()).filter(Boolean).slice(0, 15);
+    const prompt = [
+      `Appetizing food photo of a home-cooked dish: "${name.trim()}".`,
+      list.length ? `Main ingredients: ${list.join(', ')}.` : '',
+      'Plated and ready to eat, on a table, natural daylight, realistic photo, shallow depth of field, slightly overhead angle.',
+      'No text, no labels, no watermark, no people, no hands.',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    const res = await fetch(OPENAI_IMAGES_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: process.env.IMAGE_MODEL || DEFAULT_IMAGE_MODEL,
+        quality: process.env.IMAGE_QUALITY || DEFAULT_IMAGE_QUALITY,
+        prompt,
+        size: '1024x1024',
+        n: 1,
+        output_format: 'webp',
+      }),
+      signal: AbortSignal.timeout(110_000),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      this.logger.error(`OpenAI image request failed (${res.status}): ${detail.slice(0, 500)}`);
+      throw new BadGatewayException(`AI image request failed (${res.status})`);
+    }
+    const data = (await res.json()) as { data?: { b64_json?: string }[] };
+    const b64 = data.data?.[0]?.b64_json;
+    if (!b64) {
+      this.logger.error('OpenAI returned no image');
+      throw new BadGatewayException('AI returned no image');
+    }
+    return this.photos.store(Buffer.from(b64, 'base64'), userId, 'ai');
+  }
 
   // Модель пишет полноценный рецепт (с английским searchName у каждого продукта);
   // если в запросе была цель по КБЖУ — проверяем её арифметику сами и один раз просим поправить граммовки;

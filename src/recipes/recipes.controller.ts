@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { RecipesService } from './recipes.service';
-import { CreateRecipeDto } from './dto/create-recipe.dto';
+import { AttachPhotosDto, CreateRecipeDto } from './dto/create-recipe.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Lang } from '../common/lang.decorator';
 import type { Language } from '../common/languages';
@@ -83,6 +83,22 @@ export class RecipesController {
   @Post()
   create(@Body() dto: CreateRecipeDto, @Req() req: any, @Lang() lang: Language) {
     return this.recipesService.create(req.user.userId, dto, lang);
+  }
+
+  // фото своего рецепта: добавить загруженные, удалить, сделать главным
+  @Post(':id/photos')
+  addPhotos(@Param('id') id: string, @Body() dto: AttachPhotosDto, @Req() req: any) {
+    return this.recipesService.addPhotos(+id, req.user.userId, dto.photoIds);
+  }
+
+  @Delete(':id/photos/:photoId')
+  removePhoto(@Param('id') id: string, @Param('photoId') photoId: string, @Req() req: any) {
+    return this.recipesService.removePhoto(+id, req.user.userId, photoId);
+  }
+
+  @Post(':id/photos/:photoId/main')
+  makeMainPhoto(@Param('id') id: string, @Param('photoId') photoId: string, @Req() req: any) {
+    return this.recipesService.makeMainPhoto(+id, req.user.userId, photoId);
   }
 
   @Post(':id/like')

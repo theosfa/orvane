@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -16,6 +17,12 @@ import { computeRecipeTotals } from './recipe-totals';
 import { RecipeLocalizer, LocalizedText } from './recipe-localizer.service';
 import { UserFollow } from '../users/user-follow.entity';
 import { publicUser } from '../users/public-user';
+import { PhotosService } from '../photos/photos.service';
+import type { RecipePhoto } from '../photos/recipe-photo.entity';
+
+// главное фото рецепта (position 0) — для карточек; null — фото нет
+const mainPhotoId = (photos?: RecipePhoto[]) =>
+  photos?.length ? [...photos].sort((a, b) => a.position - b.position)[0].id : null;
 
 @Injectable()
 export class RecipesService {
@@ -32,6 +39,7 @@ export class RecipesService {
     @InjectRepository(UserFollow)
     private followRepo: Repository<UserFollow>,
     private localizer: RecipeLocalizer,
+    private photos: PhotosService,
   ) {}
 
   // публичные рецепты + свои (в т.ч. приватные)
@@ -85,7 +93,36 @@ export class RecipesService {
       await this.recipeStepRepo.save(s);
     }
 
+    if (dto.photoIds?.length) {
+      await this.photos.attach(recipe.id, dto.photoIds, userId);
+    }
+
     return this.findOne(recipe.id, lang, userId);
+  }
+
+  // фото меняет только автор рецепта
+  private async ownRecipe(id: number, userId: number) {
+    const recipe = await this.findVisible(id, userId);
+    if (recipe.authorId !== userId) throw new ForbiddenException('Only the author can change photos');
+    return recipe;
+  }
+
+  async addPhotos(id: number, userId: number, photoIds: string[]) {
+    await this.ownRecipe(id, userId);
+    await this.photos.attach(id, photoIds, userId);
+    return this.photos.listFor(id);
+  }
+
+  async removePhoto(id: number, userId: number, photoId: string) {
+    await this.ownRecipe(id, userId);
+    await this.photos.remove(id, photoId);
+    return this.photos.listFor(id);
+  }
+
+  async makeMainPhoto(id: number, userId: number, photoId: string) {
+    await this.ownRecipe(id, userId);
+    await this.photos.makeMain(id, photoId);
+    return this.photos.listFor(id);
   }
 
   // список рецептов — базовая инфа + liked-флаг для текущего юзера
@@ -107,6 +144,7 @@ export class RecipesService {
         ingredients: { ingredient: { translations: true } },
         translations: true,
         author: true,
+        photos: true,
       },
       order: { id: 'DESC' },
     });
@@ -161,6 +199,7 @@ export class RecipesService {
         ingredients: { ingredient: true },
         translations: true,
         author: true,
+        photos: true,
       },
       order: { id: 'DESC' },
     });
@@ -236,6 +275,7 @@ export class RecipesService {
       servings: r.servings,
       calories: Math.round(computeRecipeTotals(r).calories),
       author: this.authorOf(r, followed),
+      photoId: mainPhotoId(r.photos),
     };
   }
 
@@ -248,6 +288,7 @@ export class RecipesService {
         steps: { translations: true },
         translations: true,
         author: true,
+        photos: true,
       },
     });
     if (!recipe) throw new NotFoundException('Recipe not found');
@@ -313,6 +354,10 @@ export class RecipesService {
       isPublic: recipe.isPublic,
       isMine: recipe.authorId === userId,
       author: this.authorOf(recipe, await this.followedIds(userId)),
+      // по порядку, первое — главное
+      photos: [...(recipe.photos ?? [])]
+        .sort((a, b) => a.position - b.position)
+        .map((p) => ({ id: p.id })),
       total: {
         calories: +totalCalories.toFixed(2),
         protein: +totalProtein.toFixed(2),
@@ -393,6 +438,7 @@ export class RecipesService {
           ingredients: { ingredient: true },
           translations: true,
           author: true,
+          photos: true,
         },
       },
       order: { createdAt: 'DESC' },

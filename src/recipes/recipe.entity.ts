@@ -10,6 +10,7 @@ import { User } from '../users/users.entity';
 import { RecipeIngredient } from './recipe-ingredient.entity';
 import { RecipeStep } from './recipe-step.entity';
 import { RecipeTranslation } from './recipe-translation.entity';
+import { RecipePhoto } from '../photos/recipe-photo.entity';
 
 @Entity('recipes')
 export class Recipe {
@@ -47,4 +48,8 @@ export class Recipe {
 
   @OneToMany(() => RecipeStep, (s) => s.recipe, { cascade: true })
   steps: RecipeStep[];
+
+  // фото блюда; position 0 — главное
+  @OneToMany(() => RecipePhoto, (p) => p.recipe)
+  photos: RecipePhoto[];
 }

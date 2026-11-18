@@ -13,6 +13,7 @@ import { RecipeStepTranslation } from './recipe-step-translation.entity';
 import { RecipeLocalizer } from './recipe-localizer.service';
 import { TranslationModule } from '../translation/translation.module';
 import { UserFollow } from '../users/user-follow.entity';
+import { PhotosModule } from '../photos/photos.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { UserFollow } from '../users/user-follow.entity';
       UserFollow,
     ]),
     TranslationModule,
+    PhotosModule,
   ],
   providers: [RecipesService, RecipeLocalizer],
   controllers: [RecipesController],

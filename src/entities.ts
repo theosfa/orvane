@@ -9,6 +9,7 @@ import { RecipeStep } from './recipes/recipe-step.entity';
 import { RecipeTranslation } from './recipes/recipe-translation.entity';
 import { RecipeStepTranslation } from './recipes/recipe-step-translation.entity';
 import { RecipeLike } from './recipes/recipe-like.entity';
+import { RecipePhoto } from './photos/recipe-photo.entity';
 import { MenuEntry } from './menu/menu-entry.entity';
 import { RefreshToken } from './auth/refresh-token.entity';
 import { Wallet } from './finance/wallet.entity';
@@ -28,6 +29,7 @@ export const ENTITIES = [
   RecipeTranslation,
   RecipeStepTranslation,
   RecipeLike,
+  RecipePhoto,
   MenuEntry,
   RefreshToken,
   Wallet,
