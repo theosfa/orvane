@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService, IssuedTokens, REFRESH_TTL_MS } from './auth.service';
-import { AuthDto, UpdateProfileDto } from './dto/auth.dto';
+import { AuthDto, GoogleAuthDto, UpdateProfileDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 const REFRESH_COOKIE = 'lad_refresh';
@@ -60,6 +60,23 @@ export class AuthController {
   ) {
     const tokens = await this.authService.signin(dto.email, dto.password);
     return this.sendTokens(res, tokens);
+  }
+
+  // GET /auth/google/config — Client ID для кнопки Google; null — вход через Google не настроен
+  @Get('google/config')
+  googleConfig() {
+    return { clientId: this.authService.googleClientId };
+  }
+
+  // POST /auth/google { credential } — вход или регистрация через Google; created: аккаунт новый
+  @Post('google')
+  @HttpCode(200)
+  async google(
+    @Body() dto: GoogleAuthDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { created, ...tokens } = await this.authService.googleSignIn(dto.credential, dto.language);
+    return { ...this.sendTokens(res, tokens), created };
   }
 
   // POST /auth/refresh — по куке выдаёт новый короткий токен (и новую куку)

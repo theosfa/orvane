@@ -11,6 +11,7 @@ import { createHash, randomBytes } from 'crypto';
 import { UsersService, ProfileFields } from '../users/users.service';
 import { User } from '../users/users.entity';
 import { RefreshToken } from './refresh-token.entity';
+import { GoogleVerifier } from './google-verifier.service';
 
 // короткий токен (JWT) — 15 минут, в заголовке Authorization;
 // длинный (refresh) — 30 дней, случайная строка в httpOnly-куке, меняется при каждом использовании
@@ -27,6 +28,7 @@ export class AuthService {
     private jwtService: JwtService,
     @InjectRepository(RefreshToken)
     private refreshRepo: Repository<RefreshToken>,
+    private google: GoogleVerifier,
   ) {}
 
   private signAccessToken(userId: number, email: string) {
@@ -73,10 +75,36 @@ export class AuthService {
     const user = await this.usersService.findByEmail(email);
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
+    // аккаунт из Google без пароля — по паролю в него не войти
+    if (!user.passwordHash) throw new UnauthorizedException('Invalid credentials');
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
     return this.issueTokens(user);
+  }
+
+  get googleClientId() {
+    return this.google.clientId;
+  }
+
+  // Вход через Google: уже входил через Google -> входит; есть аккаунт с этим email (регистрировался
+  // паролем) -> Google привязывается к нему; иначе аккаунт создаётся, как при регистрации.
+  async googleSignIn(credential: string, language?: string) {
+    const identity = await this.google.verify(credential);
+
+    let user = await this.usersService.findByGoogleId(identity.googleId);
+    let created = false;
+    if (!user) {
+      user = await this.usersService.findByEmailInsensitive(identity.email);
+      if (user) {
+        await this.usersService.linkGoogle(user.id, identity.googleId);
+      } else {
+        user = await this.usersService.create(identity.email, null, language, identity);
+        created = true;
+      }
+    }
+
+    return { ...(await this.issueTokens(user)), created };
   }
 
   // обмен длинного токена на новую пару (ротация)

@@ -26,6 +26,19 @@ export class AuthDto {
   language?: string;
 }
 
+// POST /auth/google — ID-токен от кнопки Google
+export class GoogleAuthDto {
+  @IsString()
+  @MinLength(20)
+  @MaxLength(5000)
+  credential: string;
+
+  // для нового аккаунта — язык, на котором юзер сейчас видит сайт
+  @IsOptional()
+  @IsIn(SUPPORTED_LANGUAGES)
+  language?: string;
+}
+
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 

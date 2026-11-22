@@ -19,6 +19,22 @@ export class UsersService {
     return this.repo.findOne({ where: { email } });
   }
 
+  // email без учёта регистра: Google отдаёт его в нижнем, а при регистрации могли ввести Anna@…
+  findByEmailInsensitive(email: string) {
+    return this.repo
+      .createQueryBuilder('u')
+      .where('LOWER(u.email) = LOWER(:email)', { email })
+      .getOne();
+  }
+
+  findByGoogleId(googleId: string) {
+    return this.repo.findOne({ where: { googleId } });
+  }
+
+  async linkGoogle(id: number, googleId: string) {
+    await this.repo.update(id, { googleId });
+  }
+
   findById(id: number) {
     return this.repo.findOne({ where: { id } });
   }
@@ -37,7 +53,13 @@ export class UsersService {
     return firstFreeUsername(base, new Set(similar.map((u) => u.username)));
   }
 
-  async create(email: string, passwordHash: string, language?: string) {
+  // extra — для входа через Google: его id, имя и фамилия
+  async create(
+    email: string,
+    passwordHash: string | null,
+    language?: string,
+    extra: { googleId?: string; firstName?: string; lastName?: string } = {},
+  ) {
     // две регистрации с похожими email одновременно могут взять один ник — тогда пробуем снова
     for (let attempt = 0; ; attempt++) {
       const user = this.repo.create({
@@ -45,6 +67,9 @@ export class UsersService {
         passwordHash,
         language,
         username: await this.freeUsername(email),
+        googleId: extra.googleId ?? null,
+        firstName: (extra.firstName ?? '').slice(0, 50),
+        lastName: (extra.lastName ?? '').slice(0, 50),
       });
       try {
         return await this.repo.save(user);

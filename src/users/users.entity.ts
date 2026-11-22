@@ -13,8 +13,13 @@ export class User {
   @Column({ unique: true })
   email: string;
 
-  @Column()
-  passwordHash: string;
+  // null — аккаунт создан через Google и пароля у него нет
+  @Column({ type: 'varchar', nullable: true })
+  passwordHash: string | null;
+
+  // id аккаунта Google (поле sub из его токена); null — Google не привязан
+  @Column({ type: 'varchar', length: 255, unique: true, nullable: true })
+  googleId: string | null;
 
   // публичный ник: виден другим у рецептов и в профиле (/u/<username>); email другим не показываем
   @Column({ length: 30, unique: true })
