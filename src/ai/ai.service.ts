@@ -6,7 +6,10 @@ import {
   Logger,
   HttpException,
   HttpStatus,
+  BadRequestException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
+import sharp from 'sharp';
 import { IngredientsService } from '../ingredients/ingredients.service';
 import { toLanguage, type Language } from '../common/languages';
 import { clampServings } from '../recipes/servings';
@@ -23,7 +26,18 @@ type GeneratedRecipe = {
   steps: { stepNum: number; stepText: string }[];
 };
 
-type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail: 'low' | 'high' | 'auto' } };
+type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string | ContentPart[] };
+
+// что модель увидела на фото: написанный рецепт, готовое блюдо, или ни то ни другое
+export type PhotoKind = 'written' | 'dish';
+export type RecipeFromPhoto = GeneratedRecipe & {
+  kind: PhotoKind;
+  // фото блюда сохраняется и становится главным фото рецепта; у написанного рецепта — null
+  photoId: string | null;
+};
 
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_IMAGES_URL = 'https://api.openai.com/v1/images/generations';
@@ -78,6 +92,18 @@ function buildSystemPrompt(language: string): string {
     '- Finish with how to serve.',
     '',
     '"name" of the recipe is also in ' + language + '.',
+  ].join('\n');
+}
+
+// дополнение к промпту, когда вместо текста приходит фото
+function photoPromptAddon(language: string): string {
+  return [
+    '',
+    'The request is a PHOTO instead of text. First decide what it shows and add "kind" to the JSON:',
+    '- "written": a recipe written by hand, printed in a book or magazine, or shown on a screen. Transcribe THAT recipe faithfully: the same dish, the same ingredients and amounts (converted to grams), the same steps in the same order, translated into ' + language + '. Only fill in what is missing or unreadable (an amount, a temperature, a timing) with sensible values. Do not swap in a different dish. Use the servings written there, otherwise estimate from the amounts.',
+    '- "dish": a photo of cooked food. Recognise the dish and write a recipe that reproduces what is on the photo: the visible ingredients, sides, sauce and garnish, and a realistic cooking method.',
+    '- "other": neither food nor a recipe. Then answer only {"kind": "other"}.',
+    'Rules about "vague requests" and nutrition targets apply only if the user adds a note asking for them.',
   ].join('\n');
 }
 
@@ -147,7 +173,49 @@ export class AiService {
       { role: 'user', content: `Request: ${prompt}` },
     ];
 
-    let { raw, parsed } = await this.chat(messages);
+    const { raw, parsed } = await this.chat(messages);
+    return this.finish(messages, raw, parsed, lang);
+  }
+
+  // Рецепт по фото: написанный (от руки, из книги) — переписываем, готовое блюдо — придумываем рецепт
+  // по тому, что на фото, и само фото становится главным фото рецепта.
+  async generateFromPhoto(userId: number, image: Buffer, lang = 'en', note?: string): Promise<RecipeFromPhoto> {
+    let jpeg: Buffer;
+    try {
+      // достаточно для чтения почерка; меньше файл — быстрее и дешевле запрос
+      jpeg = await sharp(image, { failOn: 'error' })
+        .rotate()
+        .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+    } catch {
+      throw new BadRequestException('Unsupported or broken image');
+    }
+
+    const language = LANG_NAMES[toLanguage(lang)];
+    const messages: ChatMessage[] = [
+      { role: 'system', content: buildSystemPrompt(language) + photoPromptAddon(language) },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: note?.trim() ? `Note from the user: ${note.trim()}` : 'Here is the photo.' },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${jpeg.toString('base64')}`, detail: 'high' } },
+        ],
+      },
+    ];
+
+    const { raw, parsed } = await this.chat(messages);
+    const kind = parsed.kind === 'written' || parsed.kind === 'dish' ? parsed.kind : null;
+    if (!kind || !parsed.ingredients?.length) {
+      throw new UnprocessableEntityException('No recipe or dish found on the photo');
+    }
+    const recipe = await this.finish(messages, raw, parsed, lang);
+    const photoId = kind === 'dish' ? (await this.photos.store(image, userId, 'upload')).id : null;
+    return { ...recipe, kind, photoId };
+  }
+
+  // общий хвост генерации: продукты -> база, проверка цели по КБЖУ (с одной попыткой исправления)
+  private async finish(messages: ChatMessage[], raw: string, parsed: ModelRecipe, lang: string): Promise<GeneratedRecipe> {
     let ingredients = await this.resolveIngredients(parsed, lang);
 
     // цель считаем по КБЖУ из базы: модели часто берут КБЖУ готового продукта вместо сырого

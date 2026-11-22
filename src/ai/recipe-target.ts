@@ -20,6 +20,8 @@ export type RecipeTarget = {
 };
 
 export type ModelRecipe = {
+  // только для рецепта по фото: 'written' | 'dish' | 'other'
+  kind?: string;
   name?: string;
   servings?: number;
   target?: RecipeTarget | null;
